@@ -21,6 +21,11 @@ const ROLE_LABELS: Record<string, string> = {
   guest: 'Invitado'
 }
 
+export async function sendEmail(to: string, subject: string, html: string) {
+  const env = getEnv()
+  await getTransporter().sendMail({ from: env.SMTP_FROM, to, subject, html })
+}
+
 export async function sendInvitationEmail(to: string, token: string, role: string) {
   const env = getEnv()
   const acceptUrl = new URL('/accept-invite', env.BETTER_AUTH_URL)

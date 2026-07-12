@@ -3,6 +3,7 @@ import { db } from '../db/client'
 import { debts, expenses, paymentProofs } from '../db/schema'
 import { writeAuditLog } from '../utils/audit'
 import { splitExpense } from './debt-splitter'
+import { enqueueNotification } from './notification-service'
 
 export type ExpenseType = 'manual' | 'bank_receipt'
 export type ExpenseStatus = 'pending' | 'partial' | 'settled'
@@ -64,6 +65,16 @@ export async function createExpense(input: CreateExpenseInput) {
 
     if (debtRows.length > 0) {
       await tx.insert(debts).values(debtRows)
+      // PRD §4.7: "nueva deuda asignada" dispara notificación. Solo enqueue en la TX
+      // (escritura barata); el envío real lo hace el dispatcher por separado.
+      for (const debtRow of debtRows) {
+        await enqueueNotification({
+          userId: debtRow.debtorId,
+          eventType: 'debt_created',
+          subject: 'Nueva deuda registrada',
+          body: `Tienes una nueva deuda de ${(debtRow.amountCents / 100).toFixed(2)}€ por "${input.description}".`
+        }, tx)
+      }
     }
 
     if (input.proof) {

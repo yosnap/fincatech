@@ -42,6 +42,16 @@ export async function deleteFile(objectName: string) {
   await getClient().removeObject(env.MINIO_BUCKET, objectName)
 }
 
+export async function objectExists(objectName: string): Promise<boolean> {
+  const env = getEnv()
+  try {
+    await getClient().statObject(env.MINIO_BUCKET, objectName)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function checkConnection() {
   const env = getEnv()
   await getClient().bucketExists(env.MINIO_BUCKET)

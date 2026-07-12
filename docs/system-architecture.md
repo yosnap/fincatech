@@ -7,7 +7,7 @@
 - **Almacenamiento de archivos:** MinIO (S3-compatible, self-hosted). Comprobantes de pago y fotos se comprimen en cliente antes de subir; bucket privado, acceso solo vía URL firmada temporal.
 - **Auth:** Better Auth (sesión server-side, cookie httpOnly) + plugin `admin` con roles custom `admin`/`owner`/`guest`. Sin auto-registro público (`disableSignUp`): las cuentas se crean solo vía invitación (`/api/auth/accept-invite`) o el bootstrap del primer Admin (`/api/auth/bootstrap-admin`, se autodeshabilita en cuanto existe un usuario). Envío de invitaciones por SMTP (Gmail).
 - **OCR:** GPT-4o Vision + Structured Outputs (`OPENAI_API_KEY` opcional — sin ella, la subida de tickets se degrada a 503 y el gasto se registra manualmente; el resto de la app arranca igual). Implementado en la Fase 4, **sin verificar aún contra la API real** (ver `plans/260712-2157-plataforma-gestion-copropiedad/phase-04-*.md`).
-- **Bot / notificaciones:** Telegram Bot API — se implementa en la Fase 5.
+- **Bot / notificaciones:** Telegram Bot API (`TELEGRAM_BOT_TOKEN`/`TELEGRAM_WEBHOOK_SECRET` opcionales — sin ellos el webhook responde 503, el resto de la app arranca igual) + email SMTP (Fase 2). Implementado en la Fase 5, **sin verificar aún contra la API real de Telegram**.
 - **Gestor de paquetes:** pnpm.
 - **Hosting objetivo:** Easypanel (PaaS self-hosted sobre Docker/VPS). PostgreSQL y MinIO se despliegan como servicios gestionados ahí en producción; en local se levantan vía `docker-compose.yml`.
 
@@ -54,6 +54,13 @@ plans/                  Planes de implementación por fase
 - `server/services/vision-ocr.ts`: única puerta a la API de GPT-4o Vision (Structured Outputs, `response_format: json_schema` estricto). Reutilizable por el bot de Telegram (Fase 5).
 - Flujo: `POST /api/ocr/extract` (sube imagen, llama a Vision, devuelve un borrador) → revisión humana editable en `app/pages/expenses/new-from-ticket.vue` → `POST /api/ocr/confirm` (persiste el borrador YA corregido; nunca crea el gasto directamente desde la extracción cruda). Solo JPEG/PNG — PDF se registra manualmente (Fase 3), no vía OCR.
 - `createExpense` (Fase 3) acepta un `proof` opcional ya subido a MinIO — el comprobante se sube antes de escribir en DB y su fila en `payment_proofs` se inserta en la misma transacción que el gasto (mismo patrón que `markDebtPaid`).
+
+## Bot de Telegram y notificaciones (Fase 5)
+
+- `server/routes/webhook/telegram.post.ts`: público a propósito (Telegram no manda cookie de sesión); autenticado por `secret_token` (comparación de tiempo constante) + dedupe atómico por `update_id`. Comando `/link TOKEN` vincula `chat_id`↔usuario; una foto pasa por `vision-ocr` (Fase 4) y responde con un link de confirmación cuyo borrador viaja codificado en la propia URL (sin tabla intermedia).
+- `server/services/notification-service.ts`: `enqueueNotification` escribe en `notifications_outbox` DENTRO de la transacción del evento de dominio (p.ej. `createExpense`), nunca hace I/O de red ahí. `dispatchPendingNotifications` (cron cada 30s, `server/plugins/notification-dispatcher.ts`, `noOverlap: true`) reclama filas de forma atómica antes de enviar — evita reenvíos duplicados por solapamiento. Tras `MAX_ATTEMPTS` (5) sin éxito, la fila se marca `failed` explícitamente.
+- Preferencias de canal por usuario en `/profile` (`notification_preferences`, email=on/telegram=off por defecto).
+- HTML de notificación siempre escapado antes de interpolar texto libre (descripción de gasto) — ver `escapeHtml` en `notification-service.ts`.
 
 ## Decisiones clave
 
