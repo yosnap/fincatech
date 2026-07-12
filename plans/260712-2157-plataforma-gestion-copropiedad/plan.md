@@ -69,3 +69,11 @@ Plan revisado con `ck:predict` (5 personas: Architect/Security/Performance/UX/De
 
 ### Action Items
 - Ninguno pendiente — las 2 Preguntas Abiertas originales quedaron resueltas y las 4 respuestas ya están aplicadas en las fases correspondientes.
+
+## Convención de Verificación (para `/ck:cook --auto`)
+
+Cada checkbox de "Success Criteria" en las fases se marca `[x]` cuando se verifica de forma automática (curl, psql, capturas de pantalla, tests) — igual que se hizo en la Fase 1. Los ítems marcados con **👤 "Requiere prueba manual del usuario"** son los que dependen de un sistema externo real que solo el usuario puede accionar (cuenta de Telegram, fotos reales de tickets, etc.) — **no bloquean el merge a `develop`**, quedan como seguimiento pendiente para que el usuario los confirme cuando pueda. El resto de fases (2, 3, 6, 7, 8) son lógica de servidor + DB, 100% auto-verificables sin dependencias externas.
+
+Ítems 👤 identificados hasta ahora:
+- **Fase 4 (OCR):** calidad de extracción sobre fotos reales de tickets (no sintéticas).
+- **Fase 5 (Bot Telegram):** creación del bot real con BotFather, vinculación de cuenta y envío real de foto/notificación desde el móvil del usuario.

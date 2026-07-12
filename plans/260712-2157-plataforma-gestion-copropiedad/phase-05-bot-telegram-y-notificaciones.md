@@ -79,11 +79,12 @@ Eventos de dominio (Fase 3/6/7) → notification-service.enqueue(evento, usuario
 - [ ] Nota de alcance: WhatsApp diferido
 
 ## Success Criteria
-- [ ] Foto enviada al bot devuelve un link web que abre el gasto en revisión.
-- [ ] Solo usuarios vinculados pueden crear gastos por el bot.
-- [ ] Webhook rechaza peticiones sin secret válido y no duplica por reintentos de Telegram.
-- [ ] Evento de deuda/voto/tarea genera notificación por los canales activados por el usuario.
-- [ ] Desactivar un canal en perfil detiene sus notificaciones.
+- [ ] Webhook rechaza peticiones sin secret válido y no duplica por reintentos de Telegram (auto-verificable con curl simulando payloads de Telegram).
+- [ ] Solo usuarios vinculados pueden crear gastos por el bot (auto-verificable).
+- [ ] Evento de deuda/voto/tarea genera entrada en el outbox de notificaciones (auto-verificable vía psql).
+- [ ] Desactivar un canal en perfil detiene sus notificaciones (auto-verificable).
+- [ ] 👤 **Requiere prueba manual del usuario:** crear el bot real con BotFather, vincular tu cuenta de Telegram, enviarle una foto de un ticket desde tu móvil y confirmar que llega el link de confirmación. Necesita tu token de bot real y tu Telegram — no automatizable sin tu intervención. No bloqueante para mergear; queda como item de seguimiento hasta que lo hagas.
+- [ ] 👤 **Requiere prueba manual del usuario:** confirmar que una notificación real (ej. nueva deuda) llega a tu Telegram/email tras dispararse un evento de prueba.
 
 ## Risk Assessment
 | Riesgo | Prob×Impacto | Mitigación |

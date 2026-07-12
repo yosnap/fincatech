@@ -70,11 +70,12 @@ Web drag-drop → POST /api/ocr/extract
 - [ ] Fallback a manual si falla/low-confidence
 
 ## Success Criteria
-- [ ] Ticket legible se extrae en JSON válido y precarga la pantalla de revisión.
+- [ ] Ticket legible se extrae en JSON válido y precarga la pantalla de revisión (auto-verificable: probar con imagen de ticket sintética/de ejemplo vía curl).
 - [ ] Ningún gasto se crea sin confirmación humana.
 - [ ] Archivos de tipo/tamaño inválido se rechazan antes de llamar a la API.
 - [ ] Fallo de la API degrada a entrada manual sin bloquear al usuario.
 - [ ] Se registra confidence y coste por extracción.
+- [ ] 👤 **Requiere prueba manual del usuario:** subir 3-5 fotos de tickets REALES (no sintéticos) tomadas con el móvil y validar que la extracción es suficientemente precisa para el uso diario. No bloqueante para mergear la fase — se deja como item de seguimiento si la calidad no convence.
 
 ## Risk Assessment
 | Riesgo | Prob×Impacto | Mitigación |
