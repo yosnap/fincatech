@@ -1,0 +1,148 @@
+<script setup lang="ts">
+import { authClient } from '~/utils/auth-client'
+
+interface Member {
+  id: string
+  name: string
+  role: string
+}
+
+const emit = defineEmits<{ created: [] }>()
+
+const session = authClient.useSession()
+const { data: membersData } = await useFetch<{ members: Member[] }>('/api/expenses/participants')
+
+const TYPE_OPTIONS = [
+  { label: 'Gasto manual', value: 'manual' },
+  { label: 'Recibo bancario (liquidado en origen)', value: 'bank_receipt' }
+]
+
+const amount = ref('')
+const description = ref('')
+const type = ref<'manual' | 'bank_receipt'>('manual')
+const hasProof = ref(true)
+const selectedIds = ref<string[]>([])
+const submitting = ref(false)
+const errorMessage = ref('')
+
+watchEffect(() => {
+  const currentId = session.value.data?.user.id
+  const isMember = (membersData.value?.members ?? []).some(m => m.id === currentId)
+  if (currentId && isMember && !selectedIds.value.includes(currentId)) {
+    selectedIds.value = [...selectedIds.value, currentId]
+  }
+})
+
+function toggleParticipant(memberId: string, checked: boolean) {
+  selectedIds.value = checked
+    ? [...selectedIds.value, memberId]
+    : selectedIds.value.filter(id => id !== memberId)
+}
+
+async function onSubmit() {
+  errorMessage.value = ''
+  const amountCents = Math.round(Number(amount.value) * 100)
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    errorMessage.value = 'Importe inválido'
+    return
+  }
+  if (selectedIds.value.length === 0) {
+    errorMessage.value = 'Selecciona al menos un participante'
+    return
+  }
+
+  submitting.value = true
+  try {
+    await $fetch('/api/expenses', {
+      method: 'POST',
+      body: {
+        amountCents,
+        description: description.value,
+        type: type.value,
+        participantIds: selectedIds.value,
+        hasProof: hasProof.value
+      }
+    })
+    amount.value = ''
+    description.value = ''
+    emit('created')
+  } catch {
+    errorMessage.value = 'No se pudo crear el gasto'
+  } finally {
+    submitting.value = false
+  }
+}
+</script>
+
+<template>
+  <UCard>
+    <template #header>
+      <h2 class="text-lg font-semibold">
+        Registrar gasto
+      </h2>
+    </template>
+
+    <form
+      class="flex flex-col gap-4"
+      @submit.prevent="onSubmit"
+    >
+      <UFormField label="Descripción">
+        <UInput
+          v-model="description"
+          required
+          class="w-full"
+        />
+      </UFormField>
+
+      <UFormField label="Importe (€)">
+        <UInput
+          v-model="amount"
+          type="number"
+          step="0.01"
+          min="0.01"
+          required
+          class="w-full"
+        />
+      </UFormField>
+
+      <UFormField label="Tipo">
+        <USelect
+          v-model="type"
+          :items="TYPE_OPTIONS"
+          class="w-full"
+        />
+      </UFormField>
+
+      <UCheckbox
+        v-model="hasProof"
+        label="Tengo comprobante del ticket"
+      />
+
+      <UFormField label="Participantes (se reparte el gasto entre ellos)">
+        <div class="flex flex-col gap-2">
+          <UCheckbox
+            v-for="member in membersData?.members ?? []"
+            :key="member.id"
+            :model-value="selectedIds.includes(member.id)"
+            :label="member.name"
+            @update:model-value="(checked) => toggleParticipant(member.id, checked === true)"
+          />
+        </div>
+      </UFormField>
+
+      <UAlert
+        v-if="errorMessage"
+        color="error"
+        variant="soft"
+        :title="errorMessage"
+      />
+
+      <UButton
+        type="submit"
+        :loading="submitting"
+      >
+        Crear gasto
+      </UButton>
+    </form>
+  </UCard>
+</template>

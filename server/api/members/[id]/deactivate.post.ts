@@ -1,3 +1,4 @@
+import { FONDO_COMUN_USER_ID } from '../../../db/seed/fondo-comun'
 import { auth } from '../../../utils/auth'
 import { requireRole } from '../../../utils/rbac'
 import { writeAuditLog } from '../../../utils/audit'
@@ -10,6 +11,9 @@ export default defineEventHandler(async (event) => {
   }
   if (targetId === actor.id) {
     throw createError({ statusCode: 400, statusMessage: 'Un admin no puede darse de baja a sí mismo' })
+  }
+  if (targetId === FONDO_COMUN_USER_ID) {
+    throw createError({ statusCode: 400, statusMessage: 'El usuario de sistema "Fondo Común" no es un miembro gestionable' })
   }
 
   // Soft-delete: banUser preserva la fila (histórico contable) e impide login.

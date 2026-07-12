@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { FONDO_COMUN_USER_ID } from '../../../db/seed/fondo-comun'
 import { auth } from '../../../utils/auth'
 import { requireRole, roleSchema } from '../../../utils/rbac'
 import { writeAuditLog } from '../../../utils/audit'
@@ -15,6 +16,9 @@ export default defineEventHandler(async (event) => {
   }
   if (targetId === actor.id) {
     throw createError({ statusCode: 400, statusMessage: 'Un admin no puede cambiar su propio rol (evita auto-bloqueo)' })
+  }
+  if (targetId === FONDO_COMUN_USER_ID) {
+    throw createError({ statusCode: 400, statusMessage: 'El usuario de sistema "Fondo Común" no es un miembro gestionable' })
   }
 
   const parsed = bodySchema.safeParse(await readBody(event))

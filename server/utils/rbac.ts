@@ -1,4 +1,4 @@
-import { createError, type H3Event } from 'h3'
+import type { H3Event } from 'h3'
 import { z } from 'zod'
 
 export const ROLE_VALUES = ['admin', 'owner', 'guest'] as const

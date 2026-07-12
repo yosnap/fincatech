@@ -9,9 +9,14 @@ interface AuditLogInput {
   metadata?: Record<string, unknown>
 }
 
+type Inserter = Pick<typeof db, 'insert'>
+
 // Tabla de solo-inserción (server/db/schema/audit-log.ts): nunca update/delete desde la app.
-export async function writeAuditLog(input: AuditLogInput) {
-  await db.insert(auditLog).values({
+// Acepta un `executor` opcional (una tx de db.transaction) para que el registro de auditoría
+// participe en la MISMA transacción que la mutación de negocio (atomicidad real en
+// server/services/expense-service.ts) — por defecto usa el pool global (Fase 2).
+export async function writeAuditLog(input: AuditLogInput, executor: Inserter = db) {
+  await executor.insert(auditLog).values({
     actorId: input.actorId,
     action: input.action,
     entityType: input.entityType,

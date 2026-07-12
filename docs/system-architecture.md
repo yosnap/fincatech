@@ -39,6 +39,16 @@ plans/                  Planes de implementación por fase
 - Gestión de miembros: únicamente vía `server/api/members/*` (invite/role/deactivate), todos con `requireRole(['admin'])` + `writeAuditLog`.
 - Frontend: `app/utils/auth-client.ts` (cliente singleton, uso client-side) y `app/composables/use-auth.ts` (cliente request-scoped con `baseURL` absoluto, necesario en SSR — el singleton con URL relativa falla en middlewares de ruta server-side).
 
+> **`h3` fijado a la versión exacta de Nitro (`1.15.11`).** No añadir `h3` como dependencia con un rango de versión abierto: Nuxt/Nitro trae su propia copia interna, y una segunda versión compitiendo rompe el auto-import de `readBody`/`createError` en toda la app (ver nota post-hoc en `plans/260712-2157-plataforma-gestion-copropiedad/phase-03-*.md`). Si algún archivo bajo `server/` necesita importar algo de `h3`, que sea `import type` (se borra en build) — nunca un import de valor.
+
+## Contabilidad y deudas (Fase 3)
+
+- `server/db/schema/expenses.ts`: `expenses` (importes en céntimos enteros, `participant_snapshot` jsonb congelado en el momento de creación), `debts` (deudor→acreedor, estado pending/pending_confirmation/confirmed), `payment_proofs` (polimórfica: comprobantes de gasto o de pago de cuota).
+- `server/services/debt-splitter.ts`: función pura de reparto — división entera determinista, el residuo se lo lleva el último participante (orden por `userId`). Sin dependencias de DB, 100% testeable.
+- `server/services/expense-service.ts`: `createExpense`/`markDebtPaid`/`confirmDebtReceipt`, todo dentro de `db.transaction`. Concurrencia resuelta con `SELECT ... FOR UPDATE` (sobre la cuota individual y, al recalcular el estado agregado del gasto, también sobre la fila de `expenses`) en vez de aislamiento `SERIALIZABLE` con reintentos.
+- `server/db/seed/fondo-comun.ts`: usuario de sistema no autenticable, sembrado en el arranque (`server/plugins/seed-fondo-comun.ts`), reservado para la Fase 7 (derramas). Excluido de la gestión de miembros de la Fase 2.
+- `server/utils/file-signature.ts`: valida los magic bytes reales de un comprobante subido contra su `Content-Type` declarado (el declarado por el cliente no es de fiar).
+
 ## Decisiones clave
 
 | Decisión | Razón |

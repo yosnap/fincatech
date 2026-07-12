@@ -1,3 +1,4 @@
+import { FONDO_COMUN_USER_ID } from '../../db/seed/fondo-comun'
 import { auth } from '../../utils/auth'
 import { requireRole } from '../../utils/rbac'
 
@@ -10,7 +11,8 @@ export default defineEventHandler(async (event) => {
   })
 
   return {
-    members: users.map(u => ({
+    // El usuario de sistema "Fondo Común" (Fase 3) no es un miembro gestionable.
+    members: users.filter(u => u.id !== FONDO_COMUN_USER_ID).map(u => ({
       id: u.id,
       name: u.name,
       email: u.email,
