@@ -18,7 +18,7 @@ roadmap: "F1 · MVP financiero"
 - **Fecha:** 2026-07-12
 - **Descripción:** Bootstrap del monolito Nuxt 3 + Nitro, conexión PostgreSQL, Drizzle ORM con migraciones, MinIO como almacenamiento de archivos (comprobantes/fotos), layout base mobile-first (Nuxt UI + Tailwind), gestión de secretos y esqueleto de esquema. Despliegue objetivo: Easypanel (PaaS self-hosted sobre Docker en VPS propio). Base sobre la que se apoyan todas las fases.
 - **Prioridad:** P1
-- **Estado de implementación:** Implementado (rama `feat/0.1.0-setup-infraestructura-base`, pendiente merge a `develop`)
+- **Estado de implementación:** Implementado y mergeado a `develop` (rama `feat/0.1.0-setup-infraestructura-base`)
 - **Estado de revisión:** Verificado manualmente (typecheck, lint, healthcheck DB+MinIO, migración, subida/descarga MinIO, viewport móvil 375px). Nota: se usó Nuxt 4 en vez de Nuxt 3 (ver Next steps) por ser la versión estable actual y coincidir con la convención `app/` ya usada en el plan.
 
 ## Key Insights

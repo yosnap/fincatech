@@ -1,6 +1,19 @@
 <script setup lang="ts">
-// Navegación condicionada por rol: placeholder hasta que exista sesión/RBAC (Fase 2).
-const navLinks = [{ label: 'Inicio', to: '/' }]
+import { authClient } from '~/utils/auth-client'
+
+// useSession(useFetch), no la variante reactiva sin argumentos: esta última no resuelve
+// URLs relativas en SSR y produce un flash/mismatch de hidratación en la navegación.
+const { data: session } = await authClient.useSession(useFetch)
+
+const navLinks = computed(() => {
+  const links = [{ label: 'Inicio', to: '/' }]
+  if (!session.value) return links
+  links.push({ label: 'Mi perfil', to: '/profile' })
+  if (session.value.user.role === 'admin') {
+    links.push({ label: 'Miembros', to: '/members' })
+  }
+  return links
+})
 </script>
 
 <template>
@@ -16,6 +29,21 @@ const navLinks = [{ label: 'Inicio', to: '/' }]
       </template>
 
       <template #right>
+        <UButton
+          v-if="!session"
+          to="/login"
+          variant="soft"
+        >
+          Entrar
+        </UButton>
+        <UButton
+          v-else
+          color="neutral"
+          variant="ghost"
+          @click="authClient.signOut({ fetchOptions: { onSuccess: () => { navigateTo('/login') } } })"
+        >
+          Salir
+        </UButton>
         <UColorModeButton />
       </template>
 

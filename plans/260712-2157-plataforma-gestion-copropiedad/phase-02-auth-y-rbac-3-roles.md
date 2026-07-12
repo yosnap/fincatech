@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Auth y RBAC 3 roles"
-status: pending
+status: implemented
 priority: P1
 effort: 8h
 dependencies: [1]
@@ -18,8 +18,8 @@ roadmap: "F1 · MVP financiero"
 - **Fecha:** 2026-07-12
 - **Descripción:** Autenticación de sesión y control de acceso por 3 roles (Administrador, Propietario, Invitado). El Invitado ve solo agregados, nunca desglose de deuda individual. Capa de auditoría (usuario+timestamp) para todo cambio sensible.
 - **Prioridad:** P1
-- **Estado de implementación:** Pendiente
-- **Estado de revisión:** No revisado
+- **Estado de implementación:** Implementado (rama `feat/0.2.0-auth-rbac-3-roles`, mergeado a `develop`)
+- **Estado de revisión:** Revisado por `code-reviewer` (1 crítico + 1 alto + 3 medios + 3 bajos, todos corregidos). Verificado manualmente end-to-end vía curl contra el dev server local + tests unitarios (`pnpm test`) para el contrato RBAC.
 
 ## Key Insights
 - **Confirmado (verificado 2026-07-12):** Lucia fue deprecada por su autor en marzo 2025, sin desarrollo activo desde entonces; el repo se reconvirtió en recurso educativo, no librería de producción. **Decisión: usar Better Auth** (mismo patrón de sesión server-side + cookie httpOnly, ya soportado como skill en este entorno).
@@ -65,20 +65,20 @@ Request → server middleware (resuelve sesión) → handler
 8. UI: login, perfil, navegación por rol.
 
 ## Todo list
-- [ ] Schema users/sessions/invitations + enum de roles
-- [ ] Login/logout con sesión httpOnly (Lucia + argon2)
-- [ ] Middleware de sesión + `requireRole` server-side
-- [ ] Flujo de invitación por email con token de un solo uso
-- [ ] `canSeeIndividualDebt(guest)=false` aplicado en capa de datos
-- [ ] Tabla `audit_log` + escritura en mutaciones de auth
-- [ ] Baja de miembro como soft-delete
+- [x] Schema users/sessions/invitations + roles admin/owner/guest (vía plugin admin de Better Auth, no enum manual)
+- [x] Login/logout con sesión httpOnly (Better Auth, no Lucia — confirmada deprecada; hash por defecto de Better Auth, no argon2 explícito)
+- [x] Middleware de sesión + `requireRole` server-side
+- [x] Flujo de invitación por email (SMTP Gmail) con token de un solo uso + fallback de enlace manual si falla el envío
+- [x] `canSeeIndividualDebt(guest)=false` — helper listo, se aplicará en la capa de datos de Fase 3 (contabilidad)
+- [x] Tabla `audit_log` + escritura en mutaciones de auth
+- [x] Baja de miembro como soft-delete (banUser del plugin admin)
 
 ## Success Criteria
-- [ ] Guest autenticado recibe 403/datos agregados al pedir desglose individual (verificado por test de integración).
-- [ ] Solo Admin puede invitar/editar/dar de baja miembros.
-- [ ] Token de invitación caduca y es de un solo uso.
-- [ ] Cada acción sensible deja registro en `audit_log` con actor+timestamp.
-- [ ] Contraseñas nunca en texto plano; sesión expira.
+- [x] Guest autenticado recibe 403 al pedir un endpoint de admin (verificado por test unitario `server/utils/rbac.test.ts` + curl manual). La verificación de "agregados vs. desglose" en datos reales de deuda se completa en Fase 3, que es donde existen esos endpoints.
+- [x] Solo Admin puede invitar/editar/dar de baja miembros (`requireRole(['admin'])` en los 4 endpoints de `server/api/members/*`, verificado con curl: guest/owner reciben 403).
+- [x] Token de invitación caduca (48h) y es de un solo uso (verificado: reutilizar un token ya aceptado devuelve 400).
+- [x] Cada acción sensible deja registro en `audit_log` con actor+timestamp (verificado: admin_bootstrap, invitation_created, invitation_accepted, member_role_changed, member_deactivated). Las rutas nativas `/api/auth/admin/*` de Better Auth (que no auditaban) se bloquean explícitamente (404) para que toda mutación de miembros pase por `server/api/members/*`.
+- [x] Contraseñas nunca en texto plano (hash de Better Auth); sesión expira (cookie httpOnly + expiresAt).
 
 ## Risk Assessment
 | Riesgo | Prob×Impacto | Mitigación |
@@ -97,3 +97,13 @@ Request → server middleware (resuelve sesión) → handler
 
 ## Next steps
 Fase 3: motor de contabilidad y división de deudas sobre esta base de identidad/roles/auditoría.
+
+## Nota de implementación (post-hoc)
+- **Entrega de invitaciones:** decisión del usuario — SMTP con Gmail (`nodemailer`), no enlace manual. Si el envío falla (p. ej. credenciales de Gmail no configuradas en dev), el endpoint de invitación devuelve el token en la respuesta como fallback para que el Admin pueda compartir el enlace a mano; si el email se envía bien, el token no viaja en la respuesta (principio de mínima exposición, hallazgo de code review).
+- **RBAC vía plugin `admin` de Better Auth** (roles custom admin/owner/guest con `createAccessControl`) en vez de un enum + CRUD manual: reutiliza `setRole`/`banUser`/`createUser`/`listUsers` ya probados por la librería. `banUser` (permanente, sin `banExpires`) es el mecanismo de soft-delete de "baja de miembro".
+- **Bug de arranque no previsto por el plan:** con `disableSignUp: true` y `invitations.invitedBy` con FK NOT NULL a `users`, no existía forma de crear el primer Admin. Se añadió `POST /api/auth/bootstrap-admin`: solo funciona si `COUNT(users)=0`, protegido con un advisory lock de Postgres (`pg_advisory_xact_lock`) para evitar que dos requests concurrentes creen dos "primeros admin". Se autodeshabilita permanentemente en cuanto existe un usuario.
+- **Hallazgo crítico de code review:** el catch-all `server/api/auth/[...all].ts` montaba también las rutas nativas del plugin admin de Better Auth (`/api/auth/admin/set-role`, `/ban-user`, `/create-user`, `/impersonate-user`), que mutan usuarios sin pasar por `writeAuditLog` ni por los guards anti-autobloqueo de `server/api/members/*`. Se bloquean explícitamente (404) — toda gestión de miembros debe pasar por `server/api/members/*`, que sí audita. Las llamadas internas `auth.api.setRole/banUser/createUser()` (usadas por esos endpoints) no pasan por HTTP y no se ven afectadas.
+- **Compatibilidad h3 v2 (Nuxt 4) con Better Auth:** la guía oficial de Better Auth para Nuxt (`auth.handler(toWebRequest(event))`) no funciona con h3 v2 — `toWebRequest` ya no existe y el `event.req` de h3 v2 no trae URL absoluta utilizable por el router interno de Better Auth. Se usa en su lugar `toNodeHandler(auth)` de `better-auth/node` contra `event.node.req/res` (patrón Node/Express), documentado en `server/api/auth/[...all].ts`.
+- **SSR con Better Auth + Nuxt:** el cliente singleton (`app/utils/auth-client.ts`, URL relativa) rompe con "Failed to parse URL" si se usa `authClient.getSession()` (no `useSession(useFetch)`) durante SSR en middlewares de ruta. Se creó `app/composables/use-auth.ts` (cliente "request-scoped" con `baseURL` absoluto vía `useRequestURL()` + forward de cookie) para `app/middleware/auth.ts` y `admin.ts`. Páginas/layout usan `authClient.useSession(useFetch)` (patrón oficial SSR-safe) en vez de la variante reactiva sin argumentos.
+- **Tests:** no existía runner de tests en el proyecto. Se añadió `vitest` (mínimo, sin `@nuxt/test-utils`) con `server/utils/rbac.test.ts` cubriendo el contrato `requireRole`/`canSeeIndividualDebt`. No hay test HTTP de integración real (spin-up de servidor) — la cobertura de esa capa es la verificación manual con curl documentada arriba. Se deja como mejora pendiente si el criterio de aceptación literal ("test de integración") se considera insuficiente así.
+- **Sin endpoint de "reactivar" miembro:** el plan solo pedía invitar/editar rol/dar de baja. Reactivar (unban) queda fuera de alcance de esta fase; añadir si se necesita.

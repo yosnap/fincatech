@@ -9,6 +9,7 @@
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
     "typecheck": "nuxt typecheck",
+    "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"
@@ -17,8 +18,10 @@
     "@iconify-json/lucide": "^1.2.114",
     "@iconify-json/simple-icons": "^1.2.87",
     "@nuxt/ui": "^4.9.0",
+    "better-auth": "^1.6.23",
     "drizzle-orm": "^0.45.2",
     "minio": "^8.0.7",
+    "nodemailer": "^9.0.3",
     "nuxt": "^4.4.8",
     "pg": "^8.22.0",
     "tailwindcss": "^4.3.1",
@@ -26,10 +29,13 @@
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.16.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.20.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "^10.6.0",
+    "h3": "2.0.1-rc.25",
     "typescript": "^6.0.3",
+    "vitest": "^4.1.10",
     "vue-tsc": "^3.3.5"
   },
   "packageManager": "pnpm@11.9.0"
