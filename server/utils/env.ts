@@ -17,7 +17,10 @@ const envSchema = z.object({
   SMTP_PORT: z.coerce.number().int().positive(),
   SMTP_USER: z.string().min(1),
   SMTP_PASS: z.string().min(1),
-  SMTP_FROM: z.string().min(1)
+  SMTP_FROM: z.string().min(1),
+  // Opcional a propósito: si falta, el OCR (Fase 4) se degrada a 503 -> entrada manual
+  // en vez de impedir que arranque toda la app (fail-fast solo aplica a lo imprescindible).
+  OPENAI_API_KEY: z.string().min(1).optional()
 })
 
 let cached: z.infer<typeof envSchema> | undefined

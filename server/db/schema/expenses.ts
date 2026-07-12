@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { boolean, integer, jsonb, pgTable, real, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import { users } from './users'
 
 // Importes SIEMPRE en céntimos enteros (nunca float) — ver server/services/debt-splitter.ts.
@@ -17,6 +17,9 @@ export const expenses = pgTable('expenses', {
   // Snapshot congelado en el momento de creación: [{ userId, amountCents }] para TODOS los
   // participantes (incluido el pagador). Nunca se recalcula si cambia N después.
   participantSnapshot: jsonb('participant_snapshot').notNull(),
+  // Solo se rellenan cuando el gasto viene de OCR (Fase 4) — null en gastos manuales.
+  ocrConfidence: real('ocr_confidence'),
+  ocrCostUsd: real('ocr_cost_usd'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 })

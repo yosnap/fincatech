@@ -48,10 +48,16 @@ function formatEuros(cents: number) {
       Libro contable
     </h1>
 
-    <ExpenseForm
-      v-if="canCreate"
-      @created="refresh"
-    />
+    <template v-if="canCreate">
+      <UButton
+        to="/expenses/new-from-ticket"
+        variant="soft"
+        icon="i-lucide-camera"
+      >
+        Nuevo gasto desde foto de ticket (OCR)
+      </UButton>
+      <ExpenseForm @created="refresh" />
+    </template>
 
     <UCard>
       <div class="flex flex-col divide-y divide-default">

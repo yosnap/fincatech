@@ -15,6 +15,12 @@ interface CreateExpenseInput {
   type: ExpenseType
   participantIds: string[]
   hasProof: boolean
+  // Solo presentes cuando el gasto viene de la extracción OCR (Fase 4).
+  ocrConfidence?: number
+  ocrCostUsd?: number
+  // Comprobante YA subido a MinIO (objectName) antes de llamar aquí — igual que
+  // markDebtPaid, nunca se sube el archivo después de escribir en DB.
+  proof?: { objectName: string, contentType: string }
 }
 
 // TX: expense + debts + audit_log en una sola transacción — una caída a mitad de camino
@@ -35,7 +41,9 @@ export async function createExpense(input: CreateExpenseInput) {
       type: input.type,
       hasProof: input.hasProof,
       status: isBankReceipt || shares.length === 1 ? 'settled' : 'pending',
-      participantSnapshot: shares
+      participantSnapshot: shares,
+      ocrConfidence: input.ocrConfidence ?? null,
+      ocrCostUsd: input.ocrCostUsd ?? null
     }).returning()
     if (!expense) {
       throw createError({ statusCode: 500, statusMessage: 'No se pudo crear el gasto' })
@@ -56,6 +64,16 @@ export async function createExpense(input: CreateExpenseInput) {
 
     if (debtRows.length > 0) {
       await tx.insert(debts).values(debtRows)
+    }
+
+    if (input.proof) {
+      await tx.insert(paymentProofs).values({
+        objectName: input.proof.objectName,
+        contentType: input.proof.contentType,
+        uploadedBy: input.actorId,
+        entityType: 'expense',
+        entityId: expense.id
+      })
     }
 
     await writeAuditLog({

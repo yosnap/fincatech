@@ -6,7 +6,7 @@
 - **Base de datos:** PostgreSQL (ACID + SSI), acceso vía **Drizzle ORM** con migraciones versionadas (`drizzle-kit`).
 - **Almacenamiento de archivos:** MinIO (S3-compatible, self-hosted). Comprobantes de pago y fotos se comprimen en cliente antes de subir; bucket privado, acceso solo vía URL firmada temporal.
 - **Auth:** Better Auth (sesión server-side, cookie httpOnly) + plugin `admin` con roles custom `admin`/`owner`/`guest`. Sin auto-registro público (`disableSignUp`): las cuentas se crean solo vía invitación (`/api/auth/accept-invite`) o el bootstrap del primer Admin (`/api/auth/bootstrap-admin`, se autodeshabilita en cuanto existe un usuario). Envío de invitaciones por SMTP (Gmail).
-- **OCR:** GPT-4o Vision + Structured Outputs — se implementa en la Fase 4.
+- **OCR:** GPT-4o Vision + Structured Outputs (`OPENAI_API_KEY` opcional — sin ella, la subida de tickets se degrada a 503 y el gasto se registra manualmente; el resto de la app arranca igual). Implementado en la Fase 4, **sin verificar aún contra la API real** (ver `plans/260712-2157-plataforma-gestion-copropiedad/phase-04-*.md`).
 - **Bot / notificaciones:** Telegram Bot API — se implementa en la Fase 5.
 - **Gestor de paquetes:** pnpm.
 - **Hosting objetivo:** Easypanel (PaaS self-hosted sobre Docker/VPS). PostgreSQL y MinIO se despliegan como servicios gestionados ahí en producción; en local se levantan vía `docker-compose.yml`.
@@ -48,6 +48,12 @@ plans/                  Planes de implementación por fase
 - `server/services/expense-service.ts`: `createExpense`/`markDebtPaid`/`confirmDebtReceipt`, todo dentro de `db.transaction`. Concurrencia resuelta con `SELECT ... FOR UPDATE` (sobre la cuota individual y, al recalcular el estado agregado del gasto, también sobre la fila de `expenses`) en vez de aislamiento `SERIALIZABLE` con reintentos.
 - `server/db/seed/fondo-comun.ts`: usuario de sistema no autenticable, sembrado en el arranque (`server/plugins/seed-fondo-comun.ts`), reservado para la Fase 7 (derramas). Excluido de la gestión de miembros de la Fase 2.
 - `server/utils/file-signature.ts`: valida los magic bytes reales de un comprobante subido contra su `Content-Type` declarado (el declarado por el cliente no es de fiar).
+
+## OCR de tickets (Fase 4)
+
+- `server/services/vision-ocr.ts`: única puerta a la API de GPT-4o Vision (Structured Outputs, `response_format: json_schema` estricto). Reutilizable por el bot de Telegram (Fase 5).
+- Flujo: `POST /api/ocr/extract` (sube imagen, llama a Vision, devuelve un borrador) → revisión humana editable en `app/pages/expenses/new-from-ticket.vue` → `POST /api/ocr/confirm` (persiste el borrador YA corregido; nunca crea el gasto directamente desde la extracción cruda). Solo JPEG/PNG — PDF se registra manualmente (Fase 3), no vía OCR.
+- `createExpense` (Fase 3) acepta un `proof` opcional ya subido a MinIO — el comprobante se sube antes de escribir en DB y su fila en `payment_proofs` se inserta en la misma transacción que el gasto (mismo patrón que `markDebtPaid`).
 
 ## Decisiones clave
 
