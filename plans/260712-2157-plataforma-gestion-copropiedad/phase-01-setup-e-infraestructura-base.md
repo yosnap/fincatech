@@ -18,8 +18,8 @@ roadmap: "F1 · MVP financiero"
 - **Fecha:** 2026-07-12
 - **Descripción:** Bootstrap del monolito Nuxt 3 + Nitro, conexión PostgreSQL, Drizzle ORM con migraciones, MinIO como almacenamiento de archivos (comprobantes/fotos), layout base mobile-first (Nuxt UI + Tailwind), gestión de secretos y esqueleto de esquema. Despliegue objetivo: Easypanel (PaaS self-hosted sobre Docker en VPS propio). Base sobre la que se apoyan todas las fases.
 - **Prioridad:** P1
-- **Estado de implementación:** Pendiente
-- **Estado de revisión:** No revisado
+- **Estado de implementación:** Implementado (rama `feat/0.1.0-setup-infraestructura-base`, pendiente merge a `develop`)
+- **Estado de revisión:** Verificado manualmente (typecheck, lint, healthcheck DB+MinIO, migración, subida/descarga MinIO, viewport móvil 375px). Nota: se usó Nuxt 4 en vez de Nuxt 3 (ver Next steps) por ser la versión estable actual y coincidir con la convención `app/` ya usada en el plan.
 
 ## Key Insights
 - Nuxt/Nitro elegido por webhooks sin boilerplate (`/server/routes/*.post.ts`), clave para Fase 5.
@@ -71,21 +71,21 @@ Despliegue: Easypanel (Docker sobre VPS)
 10. Documentar stack/decisiones (incl. Easypanel + MinIO) en `docs/system-architecture.md`.
 
 ## Todo list
-- [ ] Proyecto Nuxt inicializado con Tailwind + Nuxt UI
-- [ ] Drizzle + drizzle-kit configurados con migraciones versionadas
-- [ ] Pool DB singleton + validación env fail-fast
-- [ ] PostgreSQL + MinIO desplegados en Easypanel, bucket privado creado
-- [ ] `storage.ts` con subida + URL firmada
-- [ ] Migración inicial reversible aplicada
-- [ ] Layout base responsive + healthcheck DB+MinIO
-- [ ] `docs/system-architecture.md` creado
+- [x] Proyecto Nuxt inicializado con Tailwind + Nuxt UI
+- [x] Drizzle + drizzle-kit configurados con migraciones versionadas
+- [x] Pool DB singleton + validación env fail-fast
+- [x] PostgreSQL + MinIO desplegados localmente vía `docker-compose.yml` (Easypanel es el objetivo de producción, pendiente de despliegue real)
+- [x] `storage.ts` con subida + URL firmada
+- [x] Migración inicial reversible aplicada
+- [x] Layout base responsive + healthcheck DB+MinIO
+- [x] `docs/system-architecture.md` creado
 
 ## Success Criteria
-- [ ] `pnpm dev` arranca sin errores y `/api/health` devuelve 200 con DB y MinIO OK.
-- [ ] `drizzle-kit generate` + `migrate` crean y revierten la migración inicial.
-- [ ] Layout se ve correcto en viewport 375px (mobile-first).
-- [ ] No hay secretos en el repo; `.env` en `.gitignore`.
-- [ ] Subir un archivo de prueba a MinIO y recuperarlo vía URL firmada funciona end-to-end.
+- [x] `pnpm dev` arranca sin errores y `/api/health` devuelve 200 con DB y MinIO OK.
+- [x] `drizzle-kit generate` + `migrate` crean la migración inicial. Nota: Drizzle Kit no genera SQL de `down` automático — reversibilidad verificada manualmente (`DROP TABLE` + re-`migrate`), no hay tooling de rollback automático incorporado.
+- [x] Layout se ve correcto en viewport 375px (mobile-first) — verificado con captura de pantalla.
+- [x] No hay secretos en el repo; `.env` en `.gitignore` (confirmado con `git check-ignore`).
+- [x] Subir un archivo de prueba a MinIO y recuperarlo vía URL firmada funciona end-to-end (script de verificación ad-hoc, HTTP 200).
 
 ## Risk Assessment
 | Riesgo | Prob×Impacto | Mitigación |
@@ -104,3 +104,8 @@ Despliegue: Easypanel (Docker sobre VPS)
 
 ## Next steps
 Fase 2: autenticación y RBAC de 3 roles sobre este esqueleto.
+
+## Nota de implementación (post-hoc)
+- Se usó **Nuxt 4** (estable a fecha de implementación) en vez de "Nuxt 3" como decía el plan original — Nuxt 4.4.8 es la versión estable actual y su convención de carpetas (`app/`) coincide con la que el plan ya usaba en `Related code files`. No afecta ninguna decisión de arquitectura tomada en research/red-team (Nitro, Drizzle, MinIO siguen igual).
+- MinIO local remapeado a puertos 9010/9011 (no 9000/9001) por conflicto con otro contenedor del sistema (`captaru-minio`). Solo afecta a desarrollo local; en Easypanel no habrá conflicto de puertos.
+- Drizzle Kit no genera migraciones `down` automáticas (limitación de la herramienta, no del proyecto) — el criterio de "reversibilidad" del plan se cumple de forma manual (DROP + re-migrate), no con un comando dedicado. Si se necesita rollback automatizado más adelante, habría que escribir los `down` a mano o adoptar otra herramienta.

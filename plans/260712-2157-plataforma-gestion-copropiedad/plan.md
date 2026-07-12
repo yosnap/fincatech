@@ -25,7 +25,7 @@ Las 8 fases del plan se agrupan en las 4 fases del roadmap del PRD (sección 6).
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | [Setup e infraestructura base](./phase-01-setup-e-infraestructura-base.md) | Pending |
+| 1 | [Setup e infraestructura base](./phase-01-setup-e-infraestructura-base.md) | Implemented (pending merge a develop) |
 | 2 | [Auth y RBAC 3 roles](./phase-02-auth-y-rbac-3-roles.md) | Pending |
 | 3 | [Contabilidad gastos y división de deudas](./phase-03-contabilidad-gastos-y-divisi-n-de-deudas.md) | Pending |
 | 4 | [OCR web GPT-4o Vision](./phase-04-ocr-web-gpt-4o-vision.md) | Pending |
@@ -38,7 +38,7 @@ Las 8 fases del plan se agrupan en las 4 fases del roadmap del PRD (sección 6).
 
 | Roadmap PRD | Fases del plan | Progreso |
 |-------------|----------------|----------|
-| F1 · MVP financiero | 1, 2, 3 | 0/3 |
+| F1 · MVP financiero | 1, 2, 3 | 1/3 |
 | F2 · Automatización e integraciones | 4, 5 | 0/2 |
 | F3 · Gobernanza y operaciones | 6, 7 | 0/2 |
 | F4 · Extras operativos | 8 | 0/1 |
