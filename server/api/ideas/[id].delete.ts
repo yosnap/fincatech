@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { db } from '../../db/client'
-import { ideas } from '../../db/schema'
+import { ideas, proposals } from '../../db/schema'
 import { writeAuditLog } from '../../utils/audit'
 import { requireRole } from '../../utils/rbac'
 
@@ -22,6 +22,18 @@ export default defineEventHandler(async (event) => {
     }
     if (idea.status !== 'discarded') {
       throw createError({ statusCode: 400, statusMessage: 'Solo se puede eliminar definitivamente una idea descartada' })
+    }
+
+    // originIdeaId no tiene onDelete cascade a propósito (governance.ts) — si una idea fue
+    // promovida y luego archivada, la propuesta que nació de ella sigue existiendo y aún
+    // apunta aquí. Se bloquea con un mensaje claro en vez de dejar que Postgres devuelva un
+    // error crudo de violación de FK.
+    const linkedProposal = await tx.query.proposals.findFirst({ where: eq(proposals.originIdeaId, id) })
+    if (linkedProposal) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: `No se puede eliminar: esta idea dio origen a la propuesta "${linkedProposal.title}", que todavía existe`
+      })
     }
 
     await tx.delete(ideas).where(eq(ideas.id, id))

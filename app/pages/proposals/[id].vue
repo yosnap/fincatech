@@ -44,6 +44,7 @@ const currentUserRole = computed(() => (session.value.data?.user as { role?: str
 const canManage = computed(() => currentUserRole.value === 'admin' || currentUserRole.value === 'owner')
 const canCancel = computed(() => currentUserRole.value === 'admin' || data.value?.proposal.authorId === currentUserId.value)
 const isVoting = computed(() => data.value?.proposal.status === 'voting')
+const canDeleteApproved = computed(() => currentUserRole.value === 'admin' && data.value?.proposal.status === 'approved')
 
 const toast = useToast()
 const busy = ref(false)
@@ -160,6 +161,27 @@ async function onCancel() {
     busy.value = false
   }
 }
+
+async function onDeleteApproved() {
+  const confirmed = await useConfirmDialog()({
+    title: 'Eliminar propuesta',
+    description: 'Se borrará la propuesta, la derrama generada y la tarea de ejecución asociada. No se puede deshacer.',
+    confirmLabel: 'Eliminar',
+    color: 'error'
+  })
+  if (!confirmed) return
+  busy.value = true
+  try {
+    await $fetch(`/api/proposals/${route.params.id}`, { method: 'DELETE' })
+    toast.add({ title: 'Propuesta eliminada', color: 'success' })
+    await navigateTo('/proposals')
+  } catch (error) {
+    const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
+    toast.add({ title: statusMessage ?? 'No se pudo eliminar la propuesta', color: 'error' })
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -201,23 +223,40 @@ async function onCancel() {
       </p>
 
       <template
-        v-if="isVoting && canCancel"
+        v-if="(isVoting && canCancel) || canDeleteApproved"
         #footer
       >
         <div class="flex flex-col gap-2">
-          <UButton
-            size="xs"
-            color="error"
-            variant="soft"
-            class="self-start"
-            :loading="busy"
-            @click="onCancel"
-          >
-            Cancelar propuesta
-          </UButton>
-          <p class="text-xs text-muted">
-            Cancelar oculta la propuesta para todos. Solo un administrador puede borrarla definitivamente, desde la Papelera.
-          </p>
+          <template v-if="isVoting && canCancel">
+            <UButton
+              size="xs"
+              color="error"
+              variant="soft"
+              class="self-start"
+              :loading="busy"
+              @click="onCancel"
+            >
+              Cancelar propuesta
+            </UButton>
+            <p class="text-xs text-muted">
+              Cancelar oculta la propuesta para todos. Solo un administrador puede borrarla definitivamente, desde la Papelera.
+            </p>
+          </template>
+          <template v-else-if="canDeleteApproved">
+            <UButton
+              size="xs"
+              color="error"
+              variant="soft"
+              class="self-start"
+              :loading="busy"
+              @click="onDeleteApproved"
+            >
+              Eliminar propuesta
+            </UButton>
+            <p class="text-xs text-muted">
+              Solo se puede eliminar si ningún propietario ha pagado ni confirmado su parte de la derrama generada al aprobarla. Se borra también esa derrama y la tarea de ejecución asociada.
+            </p>
+          </template>
         </div>
       </template>
     </UCard>

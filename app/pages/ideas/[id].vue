@@ -169,7 +169,7 @@ async function onPromote() {
       </p>
 
       <template
-        v-if="canManage && isOpen"
+        v-if="canManage && (isOpen || data.idea.status === 'promoted')"
         #footer
       >
         <div class="flex flex-col gap-2">
@@ -184,6 +184,7 @@ async function onPromote() {
               Pasar a discusión
             </UButton>
             <UButton
+              v-if="isOpen"
               size="sm"
               color="success"
               :loading="busy"
@@ -202,7 +203,8 @@ async function onPromote() {
             </UButton>
           </div>
           <p class="text-xs text-muted">
-            Descartar oculta la idea para todos. Solo un administrador puede borrarla definitivamente, desde la Papelera.
+            Descartar oculta la idea para todos. Solo un administrador puede borrarla definitivamente, desde la Papelera
+            <span v-if="data.idea.status === 'promoted'">— y solo si la propuesta que nació de esta idea ya no existe</span>.
           </p>
         </div>
       </template>
