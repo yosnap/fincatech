@@ -18,11 +18,13 @@ interface Proposal {
   description: string
   status: string
   winningQuoteId: string | null
+  authorId: string
 }
 
 interface MediaItem {
   id: string
   createdAt: string
+  uploadedBy: string
 }
 
 const route = useRoute()
@@ -31,14 +33,14 @@ const { data, refresh } = await useFetch<{ proposal: Proposal, quotes: Quote[], 
   `/api/proposals/${route.params.id}`
 )
 
+const currentUserId = computed(() => session.value.data?.user.id)
 const currentUserRole = computed(() => (session.value.data?.user as { role?: string } | undefined)?.role)
 const canManage = computed(() => currentUserRole.value === 'admin' || currentUserRole.value === 'owner')
+const canCancel = computed(() => currentUserRole.value === 'admin' || data.value?.proposal.authorId === currentUserId.value)
 const isVoting = computed(() => data.value?.proposal.status === 'voting')
 
 const errorMessage = ref('')
 const busy = ref(false)
-const photoFile = ref<File | null>(null)
-const photoBusy = ref(false)
 
 const quoteLabel = ref('')
 const quotePrice = ref('')
@@ -86,30 +88,19 @@ async function viewAttachment(quoteId: string) {
   window.open(result.url, '_blank')
 }
 
-function onPhotoFileChange(event: Event) {
-  photoFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
-}
-
-async function uploadPhoto() {
-  if (!photoFile.value) return
-  errorMessage.value = ''
-  photoBusy.value = true
-  try {
-    const formData = new FormData()
-    formData.append('file', photoFile.value)
-    await $fetch(`/api/proposals/${route.params.id}/media`, { method: 'POST', body: formData })
-    photoFile.value = null
-    await refresh()
-  } catch {
-    errorMessage.value = 'No se pudo subir la foto'
-  } finally {
-    photoBusy.value = false
-  }
+function canDeletePhoto(item: MediaItem) {
+  return currentUserRole.value === 'admin' || item.uploadedBy === currentUserId.value
 }
 
 async function viewPhoto(mediaId: string) {
   const result = await $fetch<{ url: string }>(`/api/proposals/${route.params.id}/media/${mediaId}`)
   window.open(result.url, '_blank')
+}
+
+async function deletePhoto(mediaId: string) {
+  if (!confirm('¿Borrar esta foto? No se puede deshacer.')) return
+  await $fetch(`/api/media/${mediaId}`, { method: 'DELETE' })
+  await refresh()
 }
 
 async function onVote(quoteId: string) {
@@ -137,6 +128,20 @@ async function onClose(overrideQuoteId?: string) {
     busy.value = false
   }
 }
+
+async function onCancel() {
+  if (!confirm('¿Seguro que quieres cancelar esta propuesta? No se podrá revertir.')) return
+  errorMessage.value = ''
+  busy.value = true
+  try {
+    await $fetch(`/api/proposals/${route.params.id}/cancel`, { method: 'POST' })
+    await refresh()
+  } catch {
+    errorMessage.value = 'No se pudo cancelar la propuesta'
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -151,16 +156,31 @@ async function onClose(overrideQuoteId?: string) {
             {{ data.proposal.title }}
           </h1>
           <UBadge
-            :color="data.proposal.status === 'approved' ? 'success' : 'neutral'"
+            :color="data.proposal.status === 'approved' ? 'success' : data.proposal.status === 'cancelled' ? 'error' : 'neutral'"
             variant="soft"
           >
-            {{ data.proposal.status === 'approved' ? 'Aprobada' : 'En votación' }}
+            {{ data.proposal.status === 'approved' ? 'Aprobada' : data.proposal.status === 'cancelled' ? 'Cancelada' : 'En votación' }}
           </UBadge>
         </div>
       </template>
       <p class="whitespace-pre-wrap text-sm">
         {{ data.proposal.description }}
       </p>
+
+      <template
+        v-if="isVoting && canCancel"
+        #footer
+      >
+        <UButton
+          size="xs"
+          color="error"
+          variant="soft"
+          :loading="busy"
+          @click="onCancel"
+        >
+          Cancelar propuesta
+        </UButton>
+      </template>
     </UCard>
 
     <UAlert
@@ -325,15 +345,28 @@ async function onClose(overrideQuoteId?: string) {
       </template>
 
       <div class="grid grid-cols-3 gap-2">
-        <UButton
+        <div
           v-for="photo in data.media"
           :key="photo.id"
-          size="xs"
-          variant="soft"
-          @click="viewPhoto(photo.id)"
+          class="flex items-center gap-1"
         >
-          {{ new Date(photo.createdAt).toLocaleDateString('es-ES') }}
-        </UButton>
+          <UButton
+            size="xs"
+            variant="soft"
+            class="flex-1"
+            @click="viewPhoto(photo.id)"
+          >
+            {{ new Date(photo.createdAt).toLocaleDateString('es-ES') }}
+          </UButton>
+          <UButton
+            v-if="canDeletePhoto(photo)"
+            icon="i-lucide-trash-2"
+            color="error"
+            variant="ghost"
+            size="xs"
+            @click="deletePhoto(photo.id)"
+          />
+        </div>
       </div>
       <p
         v-if="!data.media.length"
@@ -342,25 +375,12 @@ async function onClose(overrideQuoteId?: string) {
         Sin fotos todavía
       </p>
 
-      <div
+      <MediaPhotoUpload
         v-if="canManage"
-        class="mt-4 flex items-center gap-2"
-      >
-        <input
-          type="file"
-          accept="image/jpeg,image/png"
-          class="text-sm"
-          @change="onPhotoFileChange"
-        >
-        <UButton
-          size="xs"
-          :loading="photoBusy"
-          :disabled="!photoFile"
-          @click="uploadPhoto"
-        >
-          Subir
-        </UButton>
-      </div>
+        :upload-url="`/api/proposals/${route.params.id}/media`"
+        class="mt-4"
+        @uploaded="refresh"
+      />
     </UCard>
   </div>
 </template>

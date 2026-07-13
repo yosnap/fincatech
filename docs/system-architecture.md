@@ -160,6 +160,15 @@ Patrón documentado en `server/db/client.ts` (tipo `TxExecutor`, métodos dispon
   - `server/services/reservation-service.ts` (Fase 8): catch de `23P01` (exclusion_violation) para devolver 409 en lugar de 500.
   - `server/services/proposal-service.ts` (Fase 6, retroactivamente): catch de `23505` (unique_violation) en `castVote` para devolver 409 en duplicados.
 
+## Mejoras UX post-lanzamiento (2026-07-13)
+
+Trabajo correctivo fuera del roadmap de 8 fases, en respuesta a feedback directo del usuario tras usar la app completa. Detalle: `plans/260713-0934-mejoras-ux-borrado-gastos/plan.md`.
+
+- **Componente de subida reutilizable** (`app/components/media/PhotoUpload.vue`): wrapper sobre `UFileUpload` de Nuxt UI v4.9 (dropzone + preview + botón visible), con validación cliente (tipo/tamaño) y encapsula la subida (FormData + POST) — cada página solo pasa `upload-url` y, si el endpoint lo requiere, `field-name`/`extra-fields`. Sustituye los `<input type="file">` desnudos en tareas, galería, ideas, propuestas y comprobantes de pago (`/ledger`). Catálogo de referencia en `/dev/components` (solo Admin).
+- **Soft-delete de ideas/propuestas**: nunca se borra físicamente (preserva auditoría, cotizaciones, votos y fotos asociadas). Ideas ya tenían el estado `discarded` (Fase 6); se añadió `cancelled` a `proposals.status`, accionable vía `POST /api/proposals/[id]/cancel` (solo Admin o autor, solo mientras está en `voting`). Listados ocultan estos ítems por defecto con un toggle "mostrar descartadas/canceladas".
+- **Borrado de fotos individuales**: `DELETE /api/media/[id]` genérico (sirve para fotos de tarea, galería, idea o propuesta, ya que `media` es polimórfica). Permiso: quien subió la foto o Admin. Borra primero la fila de BD y después el objeto real en MinIO (orden elegido para que un fallo parcial deje como mucho un objeto huérfano invisible, no una foto fantasma en la UI).
+- **Central de gastos** (`/dashboard`, `server/services/dashboard-service.ts`): vista de solo lectura con 4 bloques — deudas pendientes propias, deudas a favor, historial de pagos confirmados agrupado por mes, y totales agregados del fondo común por mes/trimestre/histórico. No introduce restricciones de RBAC nuevas: las deudas propias son inherentemente datos del propio usuario (no desglose de terceros) y los agregados ya eran visibles para todos los roles en `/export` y `/ledger`.
+
 ## Decisiones clave
 
 | Decisión | Razón |

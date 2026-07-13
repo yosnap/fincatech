@@ -19,6 +19,6 @@ export default defineEventHandler(async (event) => {
 
   return {
     task,
-    media: taskMedia.map(m => ({ id: m.id, type: m.type, createdAt: m.createdAt }))
+    media: taskMedia.map(m => ({ id: m.id, type: m.type, createdAt: m.createdAt, uploadedBy: m.uploadedBy }))
   }
 })

@@ -16,12 +16,19 @@ const { data, refresh } = await useFetch<{ proposals: Proposal[] }>('/api/propos
 
 const STATUS_LABELS: Record<string, string> = {
   voting: 'En votación',
-  approved: 'Aprobada'
+  approved: 'Aprobada',
+  cancelled: 'Cancelada'
 }
 
 const canCreate = computed(() => {
   const role = (session.value.data?.user as { role?: string } | undefined)?.role
   return role === 'admin' || role === 'owner'
+})
+
+const showCancelled = ref(false)
+const visibleProposals = computed(() => {
+  const all = data.value?.proposals ?? []
+  return showCancelled.value ? all : all.filter(p => p.status !== 'cancelled')
 })
 
 const title = ref('')
@@ -91,9 +98,15 @@ async function onSubmit() {
     </UCard>
 
     <UCard>
+      <template #header>
+        <label class="flex items-center gap-2 text-sm">
+          <UCheckbox v-model="showCancelled" />
+          Mostrar canceladas
+        </label>
+      </template>
       <div class="flex flex-col divide-y divide-default">
         <NuxtLink
-          v-for="proposal in data?.proposals ?? []"
+          v-for="proposal in visibleProposals"
           :key="proposal.id"
           :to="`/proposals/${proposal.id}`"
           class="flex items-center justify-between py-3"
@@ -101,12 +114,15 @@ async function onSubmit() {
           <p class="font-medium">
             {{ proposal.title }}
           </p>
-          <UBadge variant="soft">
+          <UBadge
+            variant="soft"
+            :color="proposal.status === 'cancelled' ? 'error' : undefined"
+          >
             {{ STATUS_LABELS[proposal.status] ?? proposal.status }}
           </UBadge>
         </NuxtLink>
         <p
-          v-if="!data?.proposals?.length"
+          v-if="!visibleProposals.length"
           class="py-6 text-center text-muted"
         >
           Sin propuestas todavía

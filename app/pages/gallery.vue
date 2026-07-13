@@ -7,44 +7,29 @@ interface MediaItem {
   id: string
   type: string
   createdAt: string
+  uploadedBy: string
 }
 
 const session = authClient.useSession()
 const { data, refresh } = await useFetch<{ media: MediaItem[] }>('/api/gallery')
 
-const canUpload = computed(() => {
-  const role = (session.value.data?.user as { role?: string } | undefined)?.role
-  return role === 'admin' || role === 'owner'
-})
+const currentUserId = computed(() => session.value.data?.user.id)
+const currentUserRole = computed(() => (session.value.data?.user as { role?: string } | undefined)?.role)
+const canUpload = computed(() => currentUserRole.value === 'admin' || currentUserRole.value === 'owner')
 
-const file = ref<File | null>(null)
-const busy = ref(false)
-const errorMessage = ref('')
-
-function onFileChange(event: Event) {
-  file.value = (event.target as HTMLInputElement).files?.[0] ?? null
-}
-
-async function upload() {
-  if (!file.value) return
-  errorMessage.value = ''
-  busy.value = true
-  try {
-    const formData = new FormData()
-    formData.append('file', file.value)
-    await $fetch('/api/gallery', { method: 'POST', body: formData })
-    file.value = null
-    await refresh()
-  } catch {
-    errorMessage.value = 'No se pudo subir la foto'
-  } finally {
-    busy.value = false
-  }
+function canDelete(item: MediaItem) {
+  return currentUserRole.value === 'admin' || item.uploadedBy === currentUserId.value
 }
 
 async function viewPhoto(id: string) {
   const result = await $fetch<{ url: string }>(`/api/gallery/${id}`)
   window.open(result.url, '_blank')
+}
+
+async function deletePhoto(id: string) {
+  if (!confirm('¿Borrar esta foto? No se puede deshacer.')) return
+  await $fetch(`/api/media/${id}`, { method: 'DELETE' })
+  await refresh()
 }
 </script>
 
@@ -60,41 +45,35 @@ async function viewPhoto(id: string) {
           Subir foto
         </h2>
       </template>
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <input
-          type="file"
-          accept="image/jpeg,image/png"
-          class="text-sm"
-          @change="onFileChange"
-        >
-        <UButton
-          size="sm"
-          :loading="busy"
-          :disabled="!file"
-          @click="upload"
-        >
-          Subir
-        </UButton>
-      </div>
+      <MediaPhotoUpload
+        upload-url="/api/gallery"
+        @uploaded="refresh"
+      />
     </UCard>
 
-    <UAlert
-      v-if="errorMessage"
-      color="error"
-      variant="soft"
-      :title="errorMessage"
-    />
-
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-      <UButton
+      <div
         v-for="item in data?.media ?? []"
         :key="item.id"
-        variant="soft"
-        block
-        @click="viewPhoto(item.id)"
+        class="flex items-center gap-1"
       >
-        {{ new Date(item.createdAt).toLocaleDateString('es-ES') }}
-      </UButton>
+        <UButton
+          variant="soft"
+          block
+          class="flex-1"
+          @click="viewPhoto(item.id)"
+        >
+          {{ new Date(item.createdAt).toLocaleDateString('es-ES') }}
+        </UButton>
+        <UButton
+          v-if="canDelete(item)"
+          icon="i-lucide-trash-2"
+          color="error"
+          variant="ghost"
+          size="sm"
+          @click="deletePhoto(item.id)"
+        />
+      </div>
     </div>
     <p
       v-if="!(data?.media ?? []).length"

@@ -5,7 +5,7 @@ import { writeAuditLog } from '../utils/audit'
 import { getPgErrorCode } from '../utils/pg-error'
 
 export type IdeaStatus = 'new' | 'discussion' | 'promoted' | 'discarded'
-export type ProposalStatus = 'voting' | 'approved'
+export type ProposalStatus = 'voting' | 'approved' | 'cancelled'
 
 interface PromoteIdeaInput {
   ideaId: string
@@ -122,6 +122,9 @@ export async function closeProposalCore(tx: TxExecutor, input: CloseProposalInpu
   if (proposal.status === 'approved') {
     return proposal
   }
+  if (proposal.status === 'cancelled') {
+    throw createError({ statusCode: 400, statusMessage: 'Esta propuesta fue cancelada y ya no admite cierre' })
+  }
   // Coincide con Security Considerations del plan: "solo Admin o autor... cierra".
   if (input.actorRole !== 'admin' && proposal.authorId !== input.actorId) {
     throw createError({ statusCode: 403, statusMessage: 'Solo el Admin o el autor pueden cerrar esta propuesta' })
@@ -181,4 +184,46 @@ export async function closeProposalCore(tx: TxExecutor, input: CloseProposalInpu
 // Uso independiente (fuera del flujo de ejecución de la Fase 7): abre su propia transacción.
 export async function closeProposal(input: CloseProposalInput) {
   return db.transaction(tx => closeProposalCore(tx, input))
+}
+
+interface CancelProposalInput {
+  proposalId: string
+  actorId: string
+  actorRole: string
+}
+
+// Soft-delete: nunca se borra físicamente una propuesta (preserva auditoría, cotizaciones,
+// votos y fotos ya asociadas). Solo se puede cancelar mientras sigue en votación — una
+// propuesta 'approved' ya generó derrama+tarea (Fase 7), cancelarla dejaría esos registros
+// huérfanos de una propuesta "eliminada".
+export async function cancelProposal(input: CancelProposalInput) {
+  return db.transaction(async (tx) => {
+    const [proposal] = await tx.select().from(proposals).where(eq(proposals.id, input.proposalId)).for('update')
+    if (!proposal) {
+      throw createError({ statusCode: 404, statusMessage: 'Propuesta no encontrada' })
+    }
+    if (proposal.status !== 'voting') {
+      throw createError({ statusCode: 400, statusMessage: 'Solo se puede cancelar una propuesta en votación' })
+    }
+    if (input.actorRole !== 'admin' && proposal.authorId !== input.actorId) {
+      throw createError({ statusCode: 403, statusMessage: 'Solo el Admin o el autor pueden cancelar esta propuesta' })
+    }
+
+    const [updated] = await tx.update(proposals)
+      .set({ status: 'cancelled', closedAt: new Date(), closedBy: input.actorId, updatedAt: new Date() })
+      .where(eq(proposals.id, proposal.id))
+      .returning()
+    if (!updated) {
+      throw createError({ statusCode: 500, statusMessage: 'No se pudo cancelar la propuesta' })
+    }
+
+    await writeAuditLog({
+      actorId: input.actorId,
+      action: 'proposal_cancelled',
+      entityType: 'proposal',
+      entityId: proposal.id
+    }, tx)
+
+    return updated
+  })
 }

@@ -36,6 +36,6 @@ export default defineEventHandler(async (event) => {
     proposal,
     quotes: proposalQuotes.map(q => ({ ...q, voteCount: tallyMap[q.id] ?? 0 })),
     myVoteQuoteId: myVote?.quoteId ?? null,
-    media: photos.map(m => ({ id: m.id, createdAt: m.createdAt }))
+    media: photos.map(m => ({ id: m.id, createdAt: m.createdAt, uploadedBy: m.uploadedBy }))
   }
 })

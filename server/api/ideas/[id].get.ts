@@ -25,5 +25,5 @@ export default defineEventHandler(async (event) => {
     orderBy: (m, { desc }) => [desc(m.createdAt)]
   })
 
-  return { idea, comments, media: photos.map(m => ({ id: m.id, createdAt: m.createdAt })) }
+  return { idea, comments, media: photos.map(m => ({ id: m.id, createdAt: m.createdAt, uploadedBy: m.uploadedBy })) }
 })

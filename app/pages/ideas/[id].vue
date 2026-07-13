@@ -22,6 +22,7 @@ interface Idea {
 interface MediaItem {
   id: string
   createdAt: string
+  uploadedBy: string
 }
 
 const route = useRoute()
@@ -45,33 +46,20 @@ const isOpen = computed(() => data.value?.idea.status === 'new' || data.value?.i
 const commentBody = ref('')
 const errorMessage = ref('')
 const busy = ref(false)
-const photoFile = ref<File | null>(null)
-const photoBusy = ref(false)
 
-function onPhotoFileChange(event: Event) {
-  photoFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
-}
-
-async function uploadPhoto() {
-  if (!photoFile.value) return
-  errorMessage.value = ''
-  photoBusy.value = true
-  try {
-    const formData = new FormData()
-    formData.append('file', photoFile.value)
-    await $fetch(`/api/ideas/${route.params.id}/media`, { method: 'POST', body: formData })
-    photoFile.value = null
-    await refresh()
-  } catch {
-    errorMessage.value = 'No se pudo subir la foto'
-  } finally {
-    photoBusy.value = false
-  }
+function canDeletePhoto(item: MediaItem) {
+  return currentUserRole.value === 'admin' || item.uploadedBy === currentUserId.value
 }
 
 async function viewPhoto(mediaId: string) {
   const result = await $fetch<{ url: string }>(`/api/ideas/${route.params.id}/media/${mediaId}`)
   window.open(result.url, '_blank')
+}
+
+async function deletePhoto(mediaId: string) {
+  if (!confirm('¿Borrar esta foto? No se puede deshacer.')) return
+  await $fetch(`/api/media/${mediaId}`, { method: 'DELETE' })
+  await refresh()
 }
 
 async function onComment() {
@@ -185,15 +173,28 @@ async function onPromote() {
       </template>
 
       <div class="grid grid-cols-3 gap-2">
-        <UButton
+        <div
           v-for="photo in data.media"
           :key="photo.id"
-          size="xs"
-          variant="soft"
-          @click="viewPhoto(photo.id)"
+          class="flex items-center gap-1"
         >
-          {{ new Date(photo.createdAt).toLocaleDateString('es-ES') }}
-        </UButton>
+          <UButton
+            size="xs"
+            variant="soft"
+            class="flex-1"
+            @click="viewPhoto(photo.id)"
+          >
+            {{ new Date(photo.createdAt).toLocaleDateString('es-ES') }}
+          </UButton>
+          <UButton
+            v-if="canDeletePhoto(photo)"
+            icon="i-lucide-trash-2"
+            color="error"
+            variant="ghost"
+            size="xs"
+            @click="deletePhoto(photo.id)"
+          />
+        </div>
       </div>
       <p
         v-if="!data.media.length"
@@ -202,25 +203,12 @@ async function onPromote() {
         Sin fotos todavía
       </p>
 
-      <div
+      <MediaPhotoUpload
         v-if="canUploadPhoto"
-        class="mt-4 flex items-center gap-2"
-      >
-        <input
-          type="file"
-          accept="image/jpeg,image/png"
-          class="text-sm"
-          @change="onPhotoFileChange"
-        >
-        <UButton
-          size="xs"
-          :loading="photoBusy"
-          :disabled="!photoFile"
-          @click="uploadPhoto"
-        >
-          Subir
-        </UButton>
-      </div>
+        :upload-url="`/api/ideas/${route.params.id}/media`"
+        class="mt-4"
+        @uploaded="refresh"
+      />
     </UCard>
 
     <UCard>

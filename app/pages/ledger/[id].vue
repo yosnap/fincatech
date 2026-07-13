@@ -42,37 +42,11 @@ const STATUS_LABELS: Record<string, string> = {
   confirmed: 'Confirmado'
 }
 
-const proofFile = ref<File | null>(null)
 const busyDebtId = ref<string | null>(null)
 const errorMessage = ref('')
 
 function formatEuros(cents: number) {
   return (cents / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
-}
-
-function onFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  proofFile.value = input.files?.[0] ?? null
-}
-
-async function markPaid(debtId: string) {
-  if (!proofFile.value) {
-    errorMessage.value = 'Adjunta un comprobante (JPEG, PNG o PDF)'
-    return
-  }
-  errorMessage.value = ''
-  busyDebtId.value = debtId
-  try {
-    const formData = new FormData()
-    formData.append('proof', proofFile.value)
-    await $fetch(`/api/debts/${debtId}/mark-paid`, { method: 'POST', body: formData })
-    proofFile.value = null
-    await refresh()
-  } catch {
-    errorMessage.value = 'No se pudo marcar como pagado'
-  } finally {
-    busyDebtId.value = null
-  }
 }
 
 async function confirmDebt(debtId: string) {
@@ -156,24 +130,15 @@ async function viewProof(debtId: string) {
             </UButton>
           </div>
 
-          <div
+          <MediaPhotoUpload
             v-if="debt.status === 'pending' && debt.debtorId === currentUserId"
-            class="flex items-center gap-2"
-          >
-            <input
-              type="file"
-              accept="image/jpeg,image/png,application/pdf"
-              class="text-sm"
-              @change="onFileChange"
-            >
-            <UButton
-              size="sm"
-              :loading="busyDebtId === debt.id"
-              @click="markPaid(debt.id)"
-            >
-              Marcar pagado
-            </UButton>
-          </div>
+            :upload-url="`/api/debts/${debt.id}/mark-paid`"
+            field-name="proof"
+            accept="image/jpeg,image/png,application/pdf"
+            label="Adjunta el comprobante de pago"
+            description="JPEG, PNG o PDF, máx. 10MB — al subirlo se marca la cuota como pagada"
+            @uploaded="refresh"
+          />
 
           <div
             v-if="debt.status === 'pending_confirmation' && (debt.creditorId === currentUserId || currentUserRole === 'admin')"

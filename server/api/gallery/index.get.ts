@@ -31,5 +31,5 @@ export default defineEventHandler(async (event) => {
     where: and(...conditions),
     orderBy: [desc(media.createdAt)]
   })
-  return { media: rows.map(m => ({ id: m.id, type: m.type, createdAt: m.createdAt })) }
+  return { media: rows.map(m => ({ id: m.id, type: m.type, createdAt: m.createdAt, uploadedBy: m.uploadedBy })) }
 })
