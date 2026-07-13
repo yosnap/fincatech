@@ -108,6 +108,16 @@ async function onPromote() {
     v-if="data"
     class="mx-auto flex max-w-2xl flex-col gap-6 py-10"
   >
+    <UButton
+      icon="i-lucide-arrow-left"
+      variant="ghost"
+      color="neutral"
+      size="sm"
+      class="self-start"
+      to="/ideas"
+    >
+      Volver
+    </UButton>
     <UCard>
       <template #header>
         <div class="flex items-center justify-between">
@@ -253,5 +263,7 @@ async function onPromote() {
         </UButton>
       </form>
     </UCard>
+
+    <ReferenceLinksCard :base-url="`/api/ideas/${route.params.id}`" />
   </div>
 </template>

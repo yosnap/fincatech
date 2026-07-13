@@ -23,7 +23,6 @@ const { data: membersData } = await useFetch<{ members: Member[] }>('/api/expens
 
 const step = ref<'upload' | 'review'>('upload')
 const file = ref<File | null>(null)
-const previewUrl = ref('')
 const extracting = ref(false)
 const confirming = ref(false)
 const errorMessage = ref('')
@@ -41,13 +40,6 @@ watchEffect(() => {
     selectedIds.value = [...selectedIds.value, currentId]
   }
 })
-
-function onFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  const selected = input.files?.[0] ?? null
-  file.value = selected
-  previewUrl.value = selected ? URL.createObjectURL(selected) : ''
-}
 
 function buildDescription(extraction: Extraction): string {
   const parts = [extraction.vendor, extraction.concept].filter(Boolean)
@@ -145,17 +137,10 @@ async function onConfirm() {
       </template>
 
       <div class="flex flex-col gap-4">
-        <input
-          type="file"
-          accept="image/jpeg,image/png"
-          @change="onFileChange"
-        >
-        <img
-          v-if="previewUrl"
-          :src="previewUrl"
-          alt="Vista previa del ticket"
-          class="max-h-64 rounded-md object-contain"
-        >
+        <FilePicker
+          v-model="file"
+          label="Sube la foto del ticket"
+        />
         <UButton
           :loading="extracting"
           :disabled="!file"

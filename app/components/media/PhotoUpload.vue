@@ -26,41 +26,8 @@ const file = ref<File | null>(null)
 const busy = ref(false)
 const errorMessage = ref('')
 
-function matchesAccept(type: string): boolean {
-  return props.accept.split(',').some((pattern) => {
-    const trimmed = pattern.trim()
-    if (trimmed.endsWith('/*')) return type.startsWith(trimmed.slice(0, -1))
-    return trimmed === type
-  })
-}
-
-function validate(candidate: File): string | null {
-  if (!matchesAccept(candidate.type)) {
-    return `Tipo de archivo no admitido (esperado: ${props.accept})`
-  }
-  if (candidate.size > props.maxSizeMb * 1024 * 1024) {
-    return `El archivo supera el límite de ${props.maxSizeMb}MB`
-  }
-  return null
-}
-
-watch(file, (candidate) => {
-  if (!candidate) return
-  const validationError = validate(candidate)
-  if (validationError) {
-    errorMessage.value = validationError
-    file.value = null
-  }
-})
-
 async function upload() {
   if (!file.value) return
-  const validationError = validate(file.value)
-  if (validationError) {
-    errorMessage.value = validationError
-    return
-  }
-
   errorMessage.value = ''
   busy.value = true
   try {
@@ -83,13 +50,12 @@ async function upload() {
 
 <template>
   <div class="flex flex-col gap-2">
-    <UFileUpload
+    <FilePicker
       v-model="file"
       :accept="accept"
+      :max-size-mb="maxSizeMb"
       :label="label"
       :description="description"
-      icon="i-lucide-image-plus"
-      class="min-h-32 w-full"
     />
     <UAlert
       v-if="errorMessage"

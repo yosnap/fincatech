@@ -16,6 +16,8 @@ interface Task {
   description: string | null
   status: string
   priority: string
+  createdBy: string
+  discardedAt: string | null
 }
 
 const route = useRoute()
@@ -27,6 +29,20 @@ const STATUS_LABELS: Record<string, string> = { todo: 'Por hacer', in_progress: 
 const currentUserId = computed(() => session.value.data?.user.id)
 const currentUserRole = computed(() => (session.value.data?.user as { role?: string } | undefined)?.role)
 const canManage = computed(() => currentUserRole.value === 'admin' || currentUserRole.value === 'owner')
+const canDiscard = computed(() => currentUserRole.value === 'admin' || data.value?.task.createdBy === currentUserId.value)
+
+async function discardTask() {
+  if (!confirm('¿Descartar esta tarea? Se ocultará del listado.')) return
+  errorMessage.value = ''
+  busy.value = true
+  try {
+    await $fetch(`/api/tasks/${route.params.id}/discard`, { method: 'POST' })
+    await navigateTo('/tasks')
+  } catch {
+    errorMessage.value = 'No se pudo descartar la tarea'
+    busy.value = false
+  }
+}
 
 function canDeletePhoto(item: MediaItem) {
   return currentUserRole.value === 'admin' || item.uploadedBy === currentUserId.value
@@ -72,6 +88,17 @@ async function viewPhoto(mediaId: string) {
     v-if="data"
     class="mx-auto flex max-w-2xl flex-col gap-6 py-10"
   >
+    <UButton
+      icon="i-lucide-arrow-left"
+      variant="ghost"
+      color="neutral"
+      size="sm"
+      class="self-start"
+      to="/tasks"
+    >
+      Volver
+    </UButton>
+
     <UCard>
       <template #header>
         <div class="flex items-center justify-between">
@@ -90,8 +117,16 @@ async function viewPhoto(mediaId: string) {
         {{ data.task.description }}
       </p>
 
+      <UAlert
+        v-if="data.task.discardedAt"
+        color="warning"
+        variant="soft"
+        title="Esta tarea está descartada"
+        description="No admite cambios de estado. Solo Admin puede eliminarla definitivamente desde la papelera."
+      />
+
       <template
-        v-if="canManage"
+        v-if="canManage && !data.task.discardedAt"
         #footer
       >
         <div class="flex flex-wrap gap-2">
@@ -121,6 +156,16 @@ async function viewPhoto(mediaId: string) {
             @click="setStatus('done')"
           >
             Completado
+          </UButton>
+          <UButton
+            v-if="canDiscard"
+            size="sm"
+            color="error"
+            variant="soft"
+            :loading="busy"
+            @click="discardTask"
+          >
+            Descartar
           </UButton>
         </div>
       </template>
@@ -224,5 +269,7 @@ async function viewPhoto(mediaId: string) {
         </div>
       </UCard>
     </div>
+
+    <ReferenceLinksCard :base-url="`/api/tasks/${route.params.id}`" />
   </div>
 </template>

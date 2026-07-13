@@ -18,6 +18,9 @@ export default defineEventHandler(async (event) => {
   if (!task) {
     throw createError({ statusCode: 404, statusMessage: 'Tarea no encontrada' })
   }
+  if (task.discardedAt) {
+    throw createError({ statusCode: 400, statusMessage: 'Esta tarea está descartada y no admite cambios de estado' })
+  }
 
   const parsed = bodySchema.safeParse(await readBody(event))
   if (!parsed.success) {

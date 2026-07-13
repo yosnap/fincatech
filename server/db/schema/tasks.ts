@@ -15,6 +15,9 @@ export const tasks = pgTable('tasks', {
   status: text('status').notNull().default('todo'),
   // No nulo si la tarea nació de la ejecución de una propuesta aprobada (Fase 7).
   originProposalId: uuid('origin_proposal_id').references(() => proposals.id),
+  // Descarte (soft-delete): separado del workflow todo/in_progress/done para no romper el
+  // kanban. No nulo = tarea oculta del listado normal, visible solo en la papelera de Admin.
+  discardedAt: timestamp('discarded_at', { withTimezone: true }),
   createdBy: text('created_by').notNull().references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()

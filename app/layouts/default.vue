@@ -19,6 +19,7 @@ const navLinks = computed(() => {
   links.push({ label: 'Mi perfil', to: '/profile' })
   if (session.value.user.role === 'admin') {
     links.push({ label: 'Miembros', to: '/members' })
+    links.push({ label: 'Papelera', to: '/admin/trash' })
   }
   return links
 })

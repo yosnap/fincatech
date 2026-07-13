@@ -51,11 +51,6 @@ function formatEuros(cents: number) {
   return (cents / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
 }
 
-function onQuoteFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  quoteFile.value = input.files?.[0] ?? null
-}
-
 async function onAddQuote() {
   errorMessage.value = ''
   const priceCents = Math.round(Number(quotePrice.value) * 100)
@@ -149,6 +144,16 @@ async function onCancel() {
     v-if="data"
     class="mx-auto flex max-w-2xl flex-col gap-6 py-10"
   >
+    <UButton
+      icon="i-lucide-arrow-left"
+      variant="ghost"
+      color="neutral"
+      size="sm"
+      class="self-start"
+      to="/proposals"
+    >
+      Volver
+    </UButton>
     <UCard>
       <template #header>
         <div class="flex items-center justify-between">
@@ -310,12 +315,12 @@ async function onCancel() {
             />
           </UFormField>
           <UFormField label="PDF adjunto (opcional)">
-            <input
-              type="file"
+            <FilePicker
+              v-model="quoteFile"
               accept="application/pdf"
-              class="text-sm"
-              @change="onQuoteFileChange"
-            >
+              label="Arrastra el PDF aquí o haz clic para elegirlo"
+              description="PDF, máx. 10MB"
+            />
           </UFormField>
           <UButton
             type="submit"
@@ -382,5 +387,7 @@ async function onCancel() {
         @uploaded="refresh"
       />
     </UCard>
+
+    <ReferenceLinksCard :base-url="`/api/proposals/${route.params.id}`" />
   </div>
 </template>

@@ -27,12 +27,6 @@ const canCreate = computed(() => {
   return role === 'admin' || role === 'owner'
 })
 
-const showDiscarded = ref(false)
-const visibleIdeas = computed(() => {
-  const all = data.value?.ideas ?? []
-  return showDiscarded.value ? all : all.filter(i => i.status !== 'discarded')
-})
-
 const title = ref('')
 const description = ref('')
 const submitting = ref(false)
@@ -100,15 +94,9 @@ async function onSubmit() {
     </UCard>
 
     <UCard>
-      <template #header>
-        <label class="flex items-center gap-2 text-sm">
-          <UCheckbox v-model="showDiscarded" />
-          Mostrar descartadas
-        </label>
-      </template>
       <div class="flex flex-col divide-y divide-default">
         <NuxtLink
-          v-for="idea in visibleIdeas"
+          v-for="idea in data?.ideas ?? []"
           :key="idea.id"
           :to="`/ideas/${idea.id}`"
           class="flex items-center justify-between py-3"
@@ -116,15 +104,12 @@ async function onSubmit() {
           <p class="font-medium">
             {{ idea.title }}
           </p>
-          <UBadge
-            variant="soft"
-            :color="idea.status === 'discarded' ? 'error' : undefined"
-          >
+          <UBadge variant="soft">
             {{ STATUS_LABELS[idea.status] ?? idea.status }}
           </UBadge>
         </NuxtLink>
         <p
-          v-if="!visibleIdeas.length"
+          v-if="!data?.ideas?.length"
           class="py-6 text-center text-muted"
         >
           Sin ideas todavía

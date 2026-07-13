@@ -25,12 +25,6 @@ const canCreate = computed(() => {
   return role === 'admin' || role === 'owner'
 })
 
-const showCancelled = ref(false)
-const visibleProposals = computed(() => {
-  const all = data.value?.proposals ?? []
-  return showCancelled.value ? all : all.filter(p => p.status !== 'cancelled')
-})
-
 const title = ref('')
 const description = ref('')
 const submitting = ref(false)
@@ -98,15 +92,9 @@ async function onSubmit() {
     </UCard>
 
     <UCard>
-      <template #header>
-        <label class="flex items-center gap-2 text-sm">
-          <UCheckbox v-model="showCancelled" />
-          Mostrar canceladas
-        </label>
-      </template>
       <div class="flex flex-col divide-y divide-default">
         <NuxtLink
-          v-for="proposal in visibleProposals"
+          v-for="proposal in data?.proposals ?? []"
           :key="proposal.id"
           :to="`/proposals/${proposal.id}`"
           class="flex items-center justify-between py-3"
@@ -114,15 +102,12 @@ async function onSubmit() {
           <p class="font-medium">
             {{ proposal.title }}
           </p>
-          <UBadge
-            variant="soft"
-            :color="proposal.status === 'cancelled' ? 'error' : undefined"
-          >
+          <UBadge variant="soft">
             {{ STATUS_LABELS[proposal.status] ?? proposal.status }}
           </UBadge>
         </NuxtLink>
         <p
-          v-if="!visibleProposals.length"
+          v-if="!data?.proposals?.length"
           class="py-6 text-center text-muted"
         >
           Sin propuestas todavía
