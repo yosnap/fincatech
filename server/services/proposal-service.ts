@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { db, type TxExecutor } from '../db/client'
 import { ideas, proposals, quotes, votes } from '../db/schema'
 import { writeAuditLog } from '../utils/audit'
+import { getPgErrorCode } from '../utils/pg-error'
 
 export type IdeaStatus = 'new' | 'discussion' | 'promoted' | 'discarded'
 export type ProposalStatus = 'voting' | 'approved'
@@ -85,7 +86,7 @@ export async function castVote(input: CastVoteInput) {
       // 23505 = unique_violation (Postgres): el único caso esperado es voto duplicado.
       // Cualquier otro error (caída de conexión, deadlock...) se relanza tal cual — no lo
       // disfrazamos de "ya votaste", que ocultaría un fallo real de infraestructura.
-      if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
+      if (getPgErrorCode(error) === '23505') {
         throw createError({ statusCode: 409, statusMessage: 'Ya emitiste tu voto en esta propuesta' })
       }
       throw error

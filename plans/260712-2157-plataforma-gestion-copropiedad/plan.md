@@ -1,7 +1,7 @@
 ---
 title: "Plataforma de Gestión de Copropiedad - Finca La Unión"
 description: "Gestor web de gastos, pagos, ideas/propuestas, votación de derramas, tareas, fotos y notificaciones para copropietarios de una finca familiar."
-status: pending
+status: completed
 priority: P1
 effort: 82h
 branch: main
@@ -32,7 +32,7 @@ Las 8 fases del plan se agrupan en las 4 fases del roadmap del PRD (sección 6).
 | 5 | [Bot Telegram y notificaciones](./phase-05-bot-telegram-y-notificaciones.md) | Implemented, sin verificar contra API real (falta `TELEGRAM_BOT_TOKEN` 👤) — mergeado a develop |
 | 6 | [Ideas Propuestas y votación](./phase-06-ideas-propuestas-y-votaci-n.md) | Implemented (mergeado a develop) |
 | 7 | [Derramas tareas y evidencia fotográfica](./phase-07-derramas-tareas-y-evidencia-fotogr-fica.md) | Implemented (mergeado a develop) |
-| 8 | [Galería calendario y exportación](./phase-08-galer-a-calendario-y-exportaci-n.md) | Pending |
+| 8 | [Galería calendario y exportación](./phase-08-galer-a-calendario-y-exportaci-n.md) | Implemented (mergeado a develop) |
 
 ## Mapeo Roadmap PRD (§6) → Fases del plan
 
@@ -41,7 +41,7 @@ Las 8 fases del plan se agrupan en las 4 fases del roadmap del PRD (sección 6).
 | F1 · MVP financiero | 1, 2, 3 | 3/3 |
 | F2 · Automatización e integraciones | 4, 5 | 2/2 (código completo; ambas sin verificar contra sus APIs reales 👤) |
 | F3 · Gobernanza y operaciones | 6, 7 | 2/2 |
-| F4 · Extras operativos | 8 | 0/1 |
+| F4 · Extras operativos | 8 | 1/1 |
 
 ## Dependencies
 

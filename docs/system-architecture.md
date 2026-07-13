@@ -117,6 +117,48 @@ Patrón documentado en `server/db/client.ts` (tipo `TxExecutor`, métodos dispon
 - Invitado: lectura agregada de tareas y fotos, sin acción; nunca ve desglose de deuda individual de la derrama (heredado de `canSeeIndividualDebt` de Fase 2).
 - Las derramas se auditan como eventos de dominio (usuario/timestamp/cambio).
 
+## Galería, calendario y exportación fiscal (Fase 8)
+
+### Galería cronológica del inmueble
+
+- Reutiliza la tabla `media` de Fase 7 con `owner_type='gallery'` (vs. `owner_type='task'` para fotos Antes/Después de tareas). No requiere modelo nuevo.
+- Filtrable por rango de fechas vía query params `start`/`end`.
+- Endpoints:
+  - `GET /api/gallery` — lista fotos en orden cronológico.
+  - `POST /api/gallery/upload` — subida de foto general, validada (10 MB tras compresión, JPEG/PNG), almacenada en MinIO, insertada con `task_id IS NULL`.
+- Autorización: `admin`/`owner` crean, Invitado solo lectura (igual que tareas de Fase 7).
+
+### Calendario de reservas
+
+- `server/db/schema/reservations.ts`: tabla `reservations` (owner, `start_date`, `end_date`), con constraint de exclusión a nivel base de datos: `EXCLUDE USING gist ON (daterange(start_date, end_date, '[]'))` impide reservas solapadas.
+- El rango es **inclusivo-inclusivo deliberadamente** (`'[]'`) para permitir reservar un único día; trade-off aceptado: dos reservas no pueden encadenar checkout/checkin el mismo día (se consideran solapadas).
+- La prevención de solape ocurre solo en PostgreSQL, no en aplicación — Drizzle ORM 0.45.2 no expone un builder nativo para exclusion constraints, así que se añadió a mano en la migración SQL.
+- Endpoints:
+  - `POST /api/reservations` — crear reserva; rechaza solape con `{ statusCode: 409 }` si el constraint falla.
+  - `GET /api/reservations` — listar reservas (solo propias si `owner`, todas si `admin`).
+  - `DELETE /api/reservations/[id]` — cancelar (auditada).
+- Flujo simple por orden de llegada, sin aprobación ni límites de noches.
+
+### Exportación fiscal
+
+- `server/services/export-service.ts`: consulta gastos/pagos por rango de fechas, aplica RBAC (Invitado ve solo agregados totales, `admin`/`owner` ven desglose por deudor).
+- `server/services/export-formatters.ts`: funciones puras CSV/PDF, separadas de `export-service` para ser testeables sin variables de entorno de BD (patrón de testabilidad).
+- Formatos:
+  - CSV: columnas `fecha`, `concepto`, `monto`, `deudor` (vacío para Invitado). Mitigación de inyección de fórmulas (CWE-1236): descripciones que comienzan con `=`, `+`, `-`, `@` o tabulador se anteponan con apóstrofe.
+  - PDF: tabla simple con cabecera "Libro contable" explícitamente no certificado (no es formato AEAT Modelo 347). Sub-líneas grises por deudor si el rol permite.
+- Endpoints: `GET /api/export/csv?start=...&end=...`, `GET /api/export/pdf?start=...&end=...`.
+- **Alcance limitado explícito:** documento de consulta simple, no formato fiscal regulatorio; requiere validación posterior con gestoría externa.
+
+### Patrón transversal: manejo de errores PostgreSQL
+
+**Bug descubierto en code review y verificado empíricamente:** drizzle-orm 0.45.2 (driver `node-postgres`) envuelve errores de Postgres en un `DrizzleQueryError` cuyo `.code` directamente **no existe** — el código real de error (`23505` unique_violation, `23P01` exclusion_violation, etc.) queda en `.cause.code`.
+
+- `server/utils/pg-error.ts`: helper `getPgErrorCode(error)` que revisa primero `.code`, y si no existe, `.cause.code`.
+- **TODA consulta futura que necesite distinguir un código de error PostgreSQL específico DEBE usar este helper**, no comparar `error.code` directamente.
+- Aplicado en:
+  - `server/services/reservation-service.ts` (Fase 8): catch de `23P01` (exclusion_violation) para devolver 409 en lugar de 500.
+  - `server/services/proposal-service.ts` (Fase 6, retroactivamente): catch de `23505` (unique_violation) en `castVote` para devolver 409 en duplicados.
+
 ## Decisiones clave
 
 | Decisión | Razón |

@@ -12,6 +12,9 @@ const navLinks = computed(() => {
   links.push({ label: 'Ideas', to: '/ideas' })
   links.push({ label: 'Propuestas', to: '/proposals' })
   links.push({ label: 'Tareas', to: '/tasks' })
+  links.push({ label: 'Galería', to: '/gallery' })
+  links.push({ label: 'Calendario', to: '/calendar' })
+  links.push({ label: 'Exportar', to: '/export' })
   links.push({ label: 'Mi perfil', to: '/profile' })
   if (session.value.user.role === 'admin') {
     links.push({ label: 'Miembros', to: '/members' })
