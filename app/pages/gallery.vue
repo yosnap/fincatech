@@ -8,6 +8,7 @@ interface MediaItem {
   type: string
   createdAt: string
   uploadedBy: string
+  url: string
 }
 
 const session = authClient.useSession()
@@ -21,12 +22,14 @@ function canDelete(item: MediaItem) {
   return currentUserRole.value === 'admin' || item.uploadedBy === currentUserId.value
 }
 
-const toast = useToast()
+const galleryPhotos = computed(() => (data.value?.media ?? []).map(item => ({
+  id: item.id,
+  url: item.url,
+  createdAt: item.createdAt,
+  canDelete: canDelete(item)
+})))
 
-async function viewPhoto(id: string) {
-  const result = await $fetch<{ url: string }>(`/api/gallery/${id}`)
-  window.open(result.url, '_blank')
-}
+const toast = useToast()
 
 async function deletePhoto(id: string) {
   const confirmed = await useConfirmDialog()({
@@ -64,35 +67,16 @@ async function deletePhoto(id: string) {
       />
     </UCard>
 
-    <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-      <div
-        v-for="item in data?.media ?? []"
-        :key="item.id"
-        class="flex items-center gap-1"
-      >
-        <UButton
-          variant="soft"
-          block
-          class="flex-1"
-          @click="viewPhoto(item.id)"
-        >
-          {{ new Date(item.createdAt).toLocaleDateString('es-ES') }}
-        </UButton>
-        <UButton
-          v-if="canDelete(item)"
-          icon="i-lucide-trash-2"
-          color="error"
-          variant="ghost"
-          size="sm"
-          @click="deletePhoto(item.id)"
-        />
-      </div>
-    </div>
+    <MediaPhotoGallery
+      :photos="galleryPhotos"
+      empty-label="Sin fotos en la galería todavía"
+      @delete="deletePhoto"
+    />
     <p
-      v-if="!(data?.media ?? []).length"
-      class="text-center text-sm text-muted"
+      v-if="(data?.media.length ?? 0) >= 60"
+      class="text-center text-xs text-muted"
     >
-      Sin fotos en la galería todavía
+      Mostrando las 60 fotos más recientes
     </p>
   </div>
 </template>

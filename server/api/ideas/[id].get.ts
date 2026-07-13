@@ -3,6 +3,7 @@ import { db } from '../../db/client'
 import { ideaComments, ideas, media } from '../../db/schema'
 import { requireRole } from '../../utils/rbac'
 import { getUserNameMap } from '../../utils/user-names'
+import { resolveMediaUrls } from '../../utils/media-urls'
 
 export default defineEventHandler(async (event) => {
   requireRole(event, ['admin', 'owner', 'guest'])
@@ -31,6 +32,6 @@ export default defineEventHandler(async (event) => {
   return {
     idea: { ...idea, authorName: nameMap.get(idea.authorId) ?? idea.authorId },
     comments: comments.map(c => ({ ...c, authorName: nameMap.get(c.authorId) ?? c.authorId })),
-    media: photos.map(m => ({ id: m.id, createdAt: m.createdAt, uploadedBy: m.uploadedBy }))
+    media: await resolveMediaUrls(photos)
   }
 })

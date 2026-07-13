@@ -9,6 +9,9 @@ interface Props {
   maxSizeMb?: number
   label?: string
   description?: string
+  // false para evidencia donde la legibilidad exacta importa más que el tamaño (p.ej.
+  // comprobantes de pago: montos/referencias bancarias en capturas de pantalla).
+  compress?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -17,7 +20,8 @@ const props = withDefaults(defineProps<Props>(), {
   accept: 'image/jpeg,image/png',
   maxSizeMb: 10,
   label: 'Arrastra un archivo aquí o haz clic para elegirlo',
-  description: 'JPEG o PNG, máx. 10MB'
+  description: 'JPEG o PNG, máx. 10MB',
+  compress: true
 })
 
 const emit = defineEmits<{ uploaded: [] }>()
@@ -30,8 +34,9 @@ async function upload() {
   if (!file.value) return
   busy.value = true
   try {
+    const uploadFile = props.compress ? await compressImage(file.value) : file.value
     const formData = new FormData()
-    formData.append(props.fieldName, file.value)
+    formData.append(props.fieldName, uploadFile)
     for (const [key, value] of Object.entries(props.extraFields)) {
       formData.append(key, value)
     }

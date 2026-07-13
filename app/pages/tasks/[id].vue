@@ -8,6 +8,7 @@ interface MediaItem {
   type: string
   createdAt: string
   uploadedBy: string
+  url: string
 }
 
 interface Task {
@@ -103,12 +104,11 @@ async function deletePhoto(mediaId: string) {
 
 const busy = ref(false)
 
-function beforePhotos() {
-  return (data.value?.media ?? []).filter(m => m.type === 'before')
+function toGalleryPhoto(item: MediaItem) {
+  return { id: item.id, url: item.url, createdAt: item.createdAt, canDelete: canDeletePhoto(item) }
 }
-function afterPhotos() {
-  return (data.value?.media ?? []).filter(m => m.type === 'after')
-}
+const beforePhotos = computed(() => (data.value?.media ?? []).filter(m => m.type === 'before').map(toGalleryPhoto))
+const afterPhotos = computed(() => (data.value?.media ?? []).filter(m => m.type === 'after').map(toGalleryPhoto))
 
 async function setStatus(status: string) {
   busy.value = true
@@ -121,11 +121,6 @@ async function setStatus(status: string) {
   } finally {
     busy.value = false
   }
-}
-
-async function viewPhoto(mediaId: string) {
-  const result = await $fetch<{ url: string }>(`/api/tasks/${route.params.id}/media/${mediaId}`)
-  window.open(result.url, '_blank')
 }
 </script>
 
@@ -238,34 +233,11 @@ async function viewPhoto(mediaId: string) {
           </h2>
         </template>
         <div class="flex flex-col gap-2">
-          <div
-            v-for="photo in beforePhotos()"
-            :key="photo.id"
-            class="flex items-center gap-1"
-          >
-            <UButton
-              size="xs"
-              variant="soft"
-              class="flex-1"
-              @click="viewPhoto(photo.id)"
-            >
-              Ver foto ({{ new Date(photo.createdAt).toLocaleDateString('es-ES') }})
-            </UButton>
-            <UButton
-              v-if="canDeletePhoto(photo)"
-              icon="i-lucide-trash-2"
-              color="error"
-              variant="ghost"
-              size="xs"
-              @click="deletePhoto(photo.id)"
-            />
-          </div>
-          <p
-            v-if="!beforePhotos().length"
-            class="text-sm text-muted"
-          >
-            Sin fotos
-          </p>
+          <MediaPhotoGallery
+            :photos="beforePhotos"
+            empty-label="Sin fotos"
+            @delete="deletePhoto"
+          />
           <MediaPhotoUpload
             v-if="canManage"
             :upload-url="`/api/tasks/${route.params.id}/media`"
@@ -283,34 +255,11 @@ async function viewPhoto(mediaId: string) {
           </h2>
         </template>
         <div class="flex flex-col gap-2">
-          <div
-            v-for="photo in afterPhotos()"
-            :key="photo.id"
-            class="flex items-center gap-1"
-          >
-            <UButton
-              size="xs"
-              variant="soft"
-              class="flex-1"
-              @click="viewPhoto(photo.id)"
-            >
-              Ver foto ({{ new Date(photo.createdAt).toLocaleDateString('es-ES') }})
-            </UButton>
-            <UButton
-              v-if="canDeletePhoto(photo)"
-              icon="i-lucide-trash-2"
-              color="error"
-              variant="ghost"
-              size="xs"
-              @click="deletePhoto(photo.id)"
-            />
-          </div>
-          <p
-            v-if="!afterPhotos().length"
-            class="text-sm text-muted"
-          >
-            Sin fotos
-          </p>
+          <MediaPhotoGallery
+            :photos="afterPhotos"
+            empty-label="Sin fotos"
+            @delete="deletePhoto"
+          />
           <MediaPhotoUpload
             v-if="canManage"
             :upload-url="`/api/tasks/${route.params.id}/media`"

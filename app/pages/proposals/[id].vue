@@ -26,6 +26,7 @@ interface MediaItem {
   id: string
   createdAt: string
   uploadedBy: string
+  url: string
 }
 
 const route = useRoute()
@@ -94,10 +95,12 @@ function canDeletePhoto(item: MediaItem) {
   return currentUserRole.value === 'admin' || item.uploadedBy === currentUserId.value
 }
 
-async function viewPhoto(mediaId: string) {
-  const result = await $fetch<{ url: string }>(`/api/proposals/${route.params.id}/media/${mediaId}`)
-  window.open(result.url, '_blank')
-}
+const galleryPhotos = computed(() => (data.value?.media ?? []).map(item => ({
+  id: item.id,
+  url: item.url,
+  createdAt: item.createdAt,
+  canDelete: canDeletePhoto(item)
+})))
 
 async function deletePhoto(mediaId: string) {
   const confirmed = await useConfirmDialog()({
@@ -433,36 +436,10 @@ async function onDeleteApproved() {
         </h2>
       </template>
 
-      <div class="grid grid-cols-3 gap-2">
-        <div
-          v-for="photo in data.media"
-          :key="photo.id"
-          class="flex items-center gap-1"
-        >
-          <UButton
-            size="xs"
-            variant="soft"
-            class="flex-1"
-            @click="viewPhoto(photo.id)"
-          >
-            {{ new Date(photo.createdAt).toLocaleDateString('es-ES') }}
-          </UButton>
-          <UButton
-            v-if="canDeletePhoto(photo)"
-            icon="i-lucide-trash-2"
-            color="error"
-            variant="ghost"
-            size="xs"
-            @click="deletePhoto(photo.id)"
-          />
-        </div>
-      </div>
-      <p
-        v-if="!data.media.length"
-        class="py-2 text-center text-sm text-muted"
-      >
-        Sin fotos todavía
-      </p>
+      <MediaPhotoGallery
+        :photos="galleryPhotos"
+        @delete="deletePhoto"
+      />
 
       <MediaPhotoUpload
         v-if="canManage"

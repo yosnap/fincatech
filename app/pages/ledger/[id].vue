@@ -147,6 +147,7 @@ async function viewProof(debtId: string) {
             accept="image/jpeg,image/png,application/pdf"
             label="Adjunta el comprobante de pago"
             description="JPEG, PNG o PDF, máx. 10MB — al subirlo se marca la cuota como pagada"
+            :compress="false"
             @uploaded="refresh"
           />
 

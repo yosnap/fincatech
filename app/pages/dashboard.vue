@@ -151,6 +151,7 @@ async function confirmDebt(debtId: string) {
             accept="image/jpeg,image/png,application/pdf"
             label="Adjunta el comprobante"
             description="JPEG, PNG o PDF, máx. 10MB — al subirlo se marca como pagada"
+            :compress="false"
             @uploaded="refresh"
           />
         </div>

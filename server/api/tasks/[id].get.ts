@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { media, tasks } from '../../db/schema'
 import { requireRole } from '../../utils/rbac'
+import { resolveMediaUrls } from '../../utils/media-urls'
 
 export default defineEventHandler(async (event) => {
   requireRole(event, ['admin', 'owner', 'guest'])
@@ -19,6 +20,6 @@ export default defineEventHandler(async (event) => {
 
   return {
     task,
-    media: taskMedia.map(m => ({ id: m.id, type: m.type, createdAt: m.createdAt, uploadedBy: m.uploadedBy }))
+    media: await resolveMediaUrls(taskMedia)
   }
 })

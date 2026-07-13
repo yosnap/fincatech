@@ -3,6 +3,7 @@ import { db } from '../../db/client'
 import { media, proposals, quotes, users, votes } from '../../db/schema'
 import { requireRole } from '../../utils/rbac'
 import { getUserNameMap } from '../../utils/user-names'
+import { resolveMediaUrls } from '../../utils/media-urls'
 
 export default defineEventHandler(async (event) => {
   const actor = requireRole(event, ['admin', 'owner', 'guest'])
@@ -47,7 +48,7 @@ export default defineEventHandler(async (event) => {
     proposal: { ...proposal, authorName: nameMap.get(proposal.authorId) ?? proposal.authorId },
     quotes: proposalQuotes.map(q => ({ ...q, voteCount: tallyMap[q.id] ?? 0 })),
     myVoteQuoteId: myVote?.quoteId ?? null,
-    media: photos.map(m => ({ id: m.id, createdAt: m.createdAt, uploadedBy: m.uploadedBy })),
+    media: await resolveMediaUrls(photos),
     votedCount,
     totalEligibleVoters
   }

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { db } from '../../db/client'
 import { media } from '../../db/schema'
 import { requireRole } from '../../utils/rbac'
+import { resolveMediaUrls } from '../../utils/media-urls'
 
 const querySchema = z.object({
   start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -27,9 +28,15 @@ export default defineEventHandler(async (event) => {
     conditions.push(lte(media.createdAt, end))
   }
 
+  // Tope duro: cada fila implica una llamada a MinIO para firmar su URL (resolveMediaUrls).
+  // Sin límite, una galería con historial de meses/años dispararía cientos de llamadas a
+  // MinIO en cada carga de página — antes de este endpoint devolver URLs, no importaba
+  // (solo metadatos); ahora sí. 60 fotos más recientes es suficiente para una miniatura de
+  // galería sin necesitar paginación todavía.
   const rows = await db.query.media.findMany({
     where: and(...conditions),
-    orderBy: [desc(media.createdAt)]
+    orderBy: [desc(media.createdAt)],
+    limit: 60
   })
-  return { media: rows.map(m => ({ id: m.id, type: m.type, createdAt: m.createdAt, uploadedBy: m.uploadedBy })) }
+  return { media: await resolveMediaUrls(rows) }
 })
