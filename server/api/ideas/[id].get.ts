@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { ideaComments, ideas, media } from '../../db/schema'
 import { requireRole } from '../../utils/rbac'
+import { getUserNameMap } from '../../utils/user-names'
 
 export default defineEventHandler(async (event) => {
   requireRole(event, ['admin', 'owner', 'guest'])
@@ -25,5 +26,11 @@ export default defineEventHandler(async (event) => {
     orderBy: (m, { desc }) => [desc(m.createdAt)]
   })
 
-  return { idea, comments, media: photos.map(m => ({ id: m.id, createdAt: m.createdAt, uploadedBy: m.uploadedBy })) }
+  const nameMap = await getUserNameMap([idea.authorId, ...comments.map(c => c.authorId)])
+
+  return {
+    idea: { ...idea, authorName: nameMap.get(idea.authorId) ?? idea.authorId },
+    comments: comments.map(c => ({ ...c, authorName: nameMap.get(c.authorId) ?? c.authorId })),
+    media: photos.map(m => ({ id: m.id, createdAt: m.createdAt, uploadedBy: m.uploadedBy }))
+  }
 })

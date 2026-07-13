@@ -9,6 +9,7 @@ interface Idea {
   description: string
   status: string
   authorId: string
+  authorName: string
   createdAt: string
 }
 
@@ -86,6 +87,12 @@ async function onSubmit() {
         </UButton>
       </form>
     </UCard>
+    <UAlert
+      v-else
+      color="neutral"
+      variant="soft"
+      title="Solo los propietarios pueden proponer ideas nuevas"
+    />
 
     <UCard>
       <div class="flex flex-col divide-y divide-default">
@@ -95,9 +102,14 @@ async function onSubmit() {
           :to="`/ideas/${idea.id}`"
           class="flex items-center justify-between py-3"
         >
-          <p class="font-medium">
-            {{ idea.title }}
-          </p>
+          <div>
+            <p class="font-medium">
+              {{ idea.title }}
+            </p>
+            <p class="text-xs text-muted">
+              Por {{ idea.authorName }}
+            </p>
+          </div>
           <UBadge variant="soft">
             {{ STATUS_LABELS[idea.status] ?? idea.status }}
           </UBadge>

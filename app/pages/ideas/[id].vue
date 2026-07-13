@@ -6,6 +6,7 @@ definePageMeta({ middleware: ['auth'] })
 interface Comment {
   id: string
   authorId: string
+  authorName: string
   body: string
   createdAt: string
 }
@@ -16,6 +17,7 @@ interface Idea {
   description: string
   status: string
   authorId: string
+  authorName: string
   createdAt: string
 }
 
@@ -25,20 +27,9 @@ interface MediaItem {
   uploadedBy: string
 }
 
-interface Member {
-  id: string
-  name: string
-  role: string
-}
-
 const route = useRoute()
 const session = authClient.useSession()
 const { data, refresh } = await useFetch<{ idea: Idea, comments: Comment[], media: MediaItem[] }>(`/api/ideas/${route.params.id}`)
-const { data: membersData } = await useFetch<{ members: Member[] }>('/api/expenses/participants')
-
-function authorName(authorId: string) {
-  return (membersData.value?.members ?? []).find(m => m.id === authorId)?.name ?? authorId
-}
 
 const STATUS_LABELS: Record<string, string> = {
   new: 'Nueva',
@@ -160,9 +151,14 @@ async function onPromote() {
     <UCard>
       <template #header>
         <div class="flex items-center justify-between">
-          <h1 class="text-lg font-semibold">
-            {{ data.idea.title }}
-          </h1>
+          <div>
+            <h1 class="text-lg font-semibold">
+              {{ data.idea.title }}
+            </h1>
+            <p class="text-xs text-muted">
+              Por {{ data.idea.authorName }}
+            </p>
+          </div>
           <UBadge variant="soft">
             {{ STATUS_LABELS[data.idea.status] ?? data.idea.status }}
           </UBadge>
@@ -176,33 +172,38 @@ async function onPromote() {
         v-if="canManage && isOpen"
         #footer
       >
-        <div class="flex flex-wrap gap-2">
-          <UButton
-            v-if="data.idea.status === 'new'"
-            size="sm"
-            variant="soft"
-            :loading="busy"
-            @click="setStatus('discussion')"
-          >
-            Pasar a discusión
-          </UButton>
-          <UButton
-            size="sm"
-            color="success"
-            :loading="busy"
-            @click="onPromote"
-          >
-            Promover a propuesta
-          </UButton>
-          <UButton
-            size="sm"
-            color="error"
-            variant="soft"
-            :loading="busy"
-            @click="setStatus('discarded')"
-          >
-            Descartar
-          </UButton>
+        <div class="flex flex-col gap-2">
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              v-if="data.idea.status === 'new'"
+              size="sm"
+              variant="soft"
+              :loading="busy"
+              @click="setStatus('discussion')"
+            >
+              Pasar a discusión
+            </UButton>
+            <UButton
+              size="sm"
+              color="success"
+              :loading="busy"
+              @click="onPromote"
+            >
+              Promover a propuesta
+            </UButton>
+            <UButton
+              size="sm"
+              color="error"
+              variant="soft"
+              :loading="busy"
+              @click="setStatus('discarded')"
+            >
+              Descartar
+            </UButton>
+          </div>
+          <p class="text-xs text-muted">
+            Descartar oculta la idea para todos. Solo un administrador puede borrarla definitivamente, desde la Papelera.
+          </p>
         </div>
       </template>
     </UCard>
@@ -268,7 +269,7 @@ async function onPromote() {
         >
           <div>
             <p class="text-xs font-medium text-muted">
-              {{ authorName(comment.authorId) }} · {{ new Date(comment.createdAt).toLocaleDateString('es-ES') }}
+              {{ comment.authorName }} · {{ new Date(comment.createdAt).toLocaleDateString('es-ES') }}
             </p>
             <p>{{ comment.body }}</p>
           </div>

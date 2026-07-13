@@ -1,7 +1,8 @@
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '../../db/client'
-import { media, proposals, quotes, votes } from '../../db/schema'
+import { media, proposals, quotes, users, votes } from '../../db/schema'
 import { requireRole } from '../../utils/rbac'
+import { getUserNameMap } from '../../utils/user-names'
 
 export default defineEventHandler(async (event) => {
   const actor = requireRole(event, ['admin', 'owner', 'guest'])
@@ -32,10 +33,22 @@ export default defineEventHandler(async (event) => {
     orderBy: (m, { desc }) => [desc(m.createdAt)]
   })
 
+  const nameMap = await getUserNameMap([proposal.authorId])
+
+  // Solo admin/owner pueden votar (ver POST .../vote) — el "total" del progreso de
+  // votación se calcula sobre esos dos roles, igual que el filtro de participants.get.ts.
+  const votedCount = tally.reduce((sum, t) => sum + t.count, 0)
+  const eligibleVoters = await db.select({ count: sql<number>`count(*)::int` })
+    .from(users)
+    .where(and(eq(users.banned, false), inArray(users.role, ['admin', 'owner'])))
+  const totalEligibleVoters = eligibleVoters[0]?.count ?? 0
+
   return {
-    proposal,
+    proposal: { ...proposal, authorName: nameMap.get(proposal.authorId) ?? proposal.authorId },
     quotes: proposalQuotes.map(q => ({ ...q, voteCount: tallyMap[q.id] ?? 0 })),
     myVoteQuoteId: myVote?.quoteId ?? null,
-    media: photos.map(m => ({ id: m.id, createdAt: m.createdAt, uploadedBy: m.uploadedBy }))
+    media: photos.map(m => ({ id: m.id, createdAt: m.createdAt, uploadedBy: m.uploadedBy })),
+    votedCount,
+    totalEligibleVoters
   }
 })

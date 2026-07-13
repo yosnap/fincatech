@@ -19,6 +19,7 @@ interface Proposal {
   status: string
   winningQuoteId: string | null
   authorId: string
+  authorName: string
 }
 
 interface MediaItem {
@@ -29,9 +30,14 @@ interface MediaItem {
 
 const route = useRoute()
 const session = authClient.useSession()
-const { data, refresh } = await useFetch<{ proposal: Proposal, quotes: Quote[], myVoteQuoteId: string | null, media: MediaItem[] }>(
-  `/api/proposals/${route.params.id}`
-)
+const { data, refresh } = await useFetch<{
+  proposal: Proposal
+  quotes: Quote[]
+  myVoteQuoteId: string | null
+  media: MediaItem[]
+  votedCount: number
+  totalEligibleVoters: number
+}>(`/api/proposals/${route.params.id}`)
 
 const currentUserId = computed(() => session.value.data?.user.id)
 const currentUserRole = computed(() => (session.value.data?.user as { role?: string } | undefined)?.role)
@@ -174,9 +180,14 @@ async function onCancel() {
     <UCard>
       <template #header>
         <div class="flex items-center justify-between">
-          <h1 class="text-lg font-semibold">
-            {{ data.proposal.title }}
-          </h1>
+          <div>
+            <h1 class="text-lg font-semibold">
+              {{ data.proposal.title }}
+            </h1>
+            <p class="text-xs text-muted">
+              Por {{ data.proposal.authorName }}
+            </p>
+          </div>
           <UBadge
             :color="data.proposal.status === 'approved' ? 'success' : data.proposal.status === 'cancelled' ? 'error' : 'neutral'"
             variant="soft"
@@ -193,24 +204,48 @@ async function onCancel() {
         v-if="isVoting && canCancel"
         #footer
       >
-        <UButton
-          size="xs"
-          color="error"
-          variant="soft"
-          :loading="busy"
-          @click="onCancel"
-        >
-          Cancelar propuesta
-        </UButton>
+        <div class="flex flex-col gap-2">
+          <UButton
+            size="xs"
+            color="error"
+            variant="soft"
+            class="self-start"
+            :loading="busy"
+            @click="onCancel"
+          >
+            Cancelar propuesta
+          </UButton>
+          <p class="text-xs text-muted">
+            Cancelar oculta la propuesta para todos. Solo un administrador puede borrarla definitivamente, desde la Papelera.
+          </p>
+        </div>
       </template>
     </UCard>
 
     <UCard>
       <template #header>
-        <h2 class="text-lg font-semibold">
-          Cotizaciones
-        </h2>
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">
+            Cotizaciones
+          </h2>
+          <UBadge
+            v-if="isVoting"
+            variant="soft"
+          >
+            {{ data.votedCount }} de {{ data.totalEligibleVoters }} propietarios han votado
+          </UBadge>
+        </div>
       </template>
+
+      <UAlert
+        v-if="isVoting"
+        color="neutral"
+        variant="soft"
+        icon="i-lucide-info"
+        class="mb-4"
+        title="Cómo funciona la votación"
+        description="Cada propietario (admin u owner) tiene un voto, para una sola cotización. Gana la opción más votada al cerrar la votación; si hay empate o nadie ha votado, un administrador debe elegir la opción ganadora manualmente."
+      />
 
       <div class="flex flex-col divide-y divide-default">
         <div
