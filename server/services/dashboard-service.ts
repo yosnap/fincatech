@@ -12,12 +12,7 @@ export interface DebtSummaryItem {
   counterpartyId: string
   counterpartyName: string
   createdAt: Date
-}
-
-export interface HistoryEntry {
-  monthKey: string
-  totalCents: number
-  count: number
+  confirmedAt: Date | null
 }
 
 export interface DashboardSummary {
@@ -25,7 +20,10 @@ export interface DashboardSummary {
   // de terceros, así que no aplica la restricción de RBAC de canSeeIndividualDebt.
   pendingAsDebtor: DebtSummaryItem[]
   pendingAsCreditor: DebtSummaryItem[]
-  paymentHistory: HistoryEntry[]
+  // Confirmadas: permiten calcular "cuánto he pagado/me han pagado" filtrando por
+  // confirmedAt en el cliente (semana/mes/histórico) sin re-consultar el servidor.
+  paidAsDebtor: DebtSummaryItem[]
+  paidAsCreditor: DebtSummaryItem[]
   // Agregados del fondo común: solo totales por periodo, visibles para todos los roles.
   aggregateTotals: { monthCents: number, quarterCents: number, allTimeCents: number }
 }
@@ -60,7 +58,8 @@ export async function getDashboardSummary(user: SessionUser): Promise<DashboardS
       status: debt.status,
       counterpartyId,
       counterpartyName: nameMap.get(counterpartyId) ?? counterpartyId,
-      createdAt: debt.createdAt
+      createdAt: debt.createdAt,
+      confirmedAt: debt.confirmedAt
     }
   }
 
@@ -70,19 +69,12 @@ export async function getDashboardSummary(user: SessionUser): Promise<DashboardS
   const pendingAsCreditor = myDebtsAsCreditor
     .filter(d => d.status !== 'confirmed')
     .map(d => toSummary(d, d.debtorId))
-
-  const historyMap = new Map<string, { totalCents: number, count: number }>()
-  for (const debt of [...myDebtsAsDebtor, ...myDebtsAsCreditor]) {
-    if (debt.status !== 'confirmed' || !debt.confirmedAt) continue
-    const monthKey = debt.confirmedAt.toISOString().slice(0, 7)
-    const entry = historyMap.get(monthKey) ?? { totalCents: 0, count: 0 }
-    entry.totalCents += debt.amountCents
-    entry.count += 1
-    historyMap.set(monthKey, entry)
-  }
-  const paymentHistory = [...historyMap.entries()]
-    .map(([monthKey, v]) => ({ monthKey, ...v }))
-    .sort((a, b) => b.monthKey.localeCompare(a.monthKey))
+  const paidAsDebtor = myDebtsAsDebtor
+    .filter(d => d.status === 'confirmed')
+    .map(d => toSummary(d, d.creditorId))
+  const paidAsCreditor = myDebtsAsCreditor
+    .filter(d => d.status === 'confirmed')
+    .map(d => toSummary(d, d.debtorId))
 
   const now = new Date()
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
@@ -94,5 +86,5 @@ export async function getDashboardSummary(user: SessionUser): Promise<DashboardS
     allTimeCents: allExpenses.reduce((sum, e) => sum + e.amountCents, 0)
   }
 
-  return { pendingAsDebtor, pendingAsCreditor, paymentHistory, aggregateTotals }
+  return { pendingAsDebtor, pendingAsCreditor, paidAsDebtor, paidAsCreditor, aggregateTotals }
 }
