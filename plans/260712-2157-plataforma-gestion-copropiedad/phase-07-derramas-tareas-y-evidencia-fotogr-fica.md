@@ -1,7 +1,7 @@
 ---
 phase: 7
 title: "Derramas, tareas y evidencia fotográfica"
-status: pending
+status: completed
 priority: P2
 effort: 12h
 dependencies: [6]
@@ -18,8 +18,8 @@ roadmap: "F3 · Gobernanza y operaciones"
 - **Fecha:** 2026-07-12
 - **Descripción:** Al aprobarse una propuesta (Fase 6), generar automáticamente y en una sola transacción: una **Derrama oficial** (coste ganador repartido entre TODOS los copropietarios como deuda urgente, reutilizando el motor de Fase 3) y una **Tarea de ejecución** vinculada. Módulo de tareas completo (`Por Hacer→En Progreso→Completado`) con evidencia fotográfica Antes/Después.
 - **Prioridad:** P2
-- **Estado de implementación:** Pendiente
-- **Estado de revisión:** No revisado
+- **Estado de implementación:** Implementado (mergeado a develop)
+- **Estado de revisión:** Revisado (code-reviewer) — 1 hallazgo crítico corregido, 1 medio corregido, 1 medio aceptado como decisión de diseño
 
 ## Key Insights
 - La derrama reutiliza `debt-splitter`/`expense-service` de Fase 3 pero difiere del gasto normal: se reparte entre **todos** (N, no N-1) porque nadie ha adelantado el dinero aún. El acreedor es el usuario sistema "fondo común" ya modelado en Fase 3 (`users` con rol `fondo`) — no redefinir aquí, solo consumirlo.
@@ -64,20 +64,30 @@ Task ── media[] (tipo: 'antes'|'despues')  ── repositorio 'media' compar
 7. UI: lista/kanban de tareas, detalle con evidencia Antes/Después.
 
 ## Todo list
-- [ ] Schema tasks + media (repositorio compartido con Fase 8)
-- [ ] executeApprovedProposal: derrama+tarea en TX única e idempotente
-- [ ] Reparto de derrama entre TODOS + acreedor fondo común definido
-- [ ] Enganche con cierre de propuesta (Fase 6)
-- [ ] CRUD tareas + transición de estados + asignación
-- [ ] Fotos Antes/Después vinculadas a tarea
-- [ ] Notificaciones de derrama y tarea (Fase 5)
+- [x] Schema tasks + media (repositorio compartido con Fase 8)
+- [x] executeApprovedProposal: derrama+tarea en TX única e idempotente
+- [x] Reparto de derrama entre TODOS + acreedor fondo común definido
+- [x] Enganche con cierre de propuesta (Fase 6)
+- [x] CRUD tareas + transición de estados + asignación
+- [x] Fotos Antes/Después vinculadas a tarea
+- [x] Notificaciones de derrama y tarea (Fase 5)
 
 ## Success Criteria
-- [ ] Aprobar una propuesta genera exactamente una derrama y una tarea (idempotente ante reintento).
-- [ ] La derrama reparte el coste ganador entre todos los copropietarios como deuda.
-- [ ] Fallo al crear la tarea revierte también la derrama (atomicidad verificada).
-- [ ] Una tarea admite fotos etiquetadas Antes y Después, filtrables.
-- [ ] Cambios de estado de tarea quedan auditados.
+- [x] Aprobar una propuesta genera exactamente una derrama y una tarea (idempotente ante reintento). Verificado vía curl+psql: retry devuelve mismo expense.id/task.id, sin duplicados (índices únicos parciales como red de seguridad).
+- [x] La derrama reparte el coste ganador entre todos los copropietarios como deuda. Verificado: 4 debts creadas para 4 propietarios activos, acreedor = Fondo Común.
+- [x] Fallo al crear la tarea revierte también la derrama (atomicidad verificada). Verificado con escenario forzado (task huérfana pre-insertada que colisiona con `tasks_origin_proposal_unique`): la propuesta NO queda 'approved' y el expense insertado se revierte junto con todo lo demás.
+- [x] Una tarea admite fotos etiquetadas Antes y Después, filtrables.
+- [x] Cambios de estado de tarea quedan auditados.
+
+## Nota de implementación (post-hoc)
+
+**Hallazgo crítico corregido (code review):** `close.post.ts` ejecutaba `closeProposal()` y `executeApprovedProposal()` como dos transacciones de base de datos separadas, violando el requisito explícito de "TX única" de este plan. Si la segunda fallaba tras confirmar la primera, la propuesta quedaba `approved` permanentemente sin derrama ni tarea, sin ruta de recuperación en la UI. Corregido extrayendo `closeProposalCore(tx, input)` y `executeApprovedProposalCore(tx, input)` (reciben un `TxExecutor` en vez de abrir su propia transacción) y componiéndolas dentro de un único `db.transaction()` en `server/api/proposals/[id]/close.post.ts`. Verificado funcionalmente: rollback atómico confirmado forzando un fallo de constraint dentro de `executeApprovedProposalCore`.
+
+**Hallazgo medio corregido:** faltaba la notificación de "tarea asignada" al crear una tarea con `assigneeId` o al asignarla vía `PATCH`. Añadido `enqueueNotification` en `server/api/tasks/index.post.ts` y `server/api/tasks/[id].patch.ts`.
+
+**Decisión aceptada (no bloqueante):** cualquier `admin`/`owner` puede gestionar cualquier tarea (crear, reasignar, cambiar estado), no solo el creador o el asignado. Es una familia pequeña con roles de confianza; se documenta como decisión de diseño explícita en vez de añadir RBAC granular por tarea.
+
+**Deuda técnica aceptada:** `executeApprovedProposalCore` no tiene tests automatizados dedicados (cubierto indirectamente por `debt-splitter.test.ts` para el reparto y verificación manual curl+psql para la orquestación transaccional).
 
 ## Risk Assessment
 | Riesgo | Prob×Impacto | Mitigación |

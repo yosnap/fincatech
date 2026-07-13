@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "expenses_origin_proposal_unique" ON "expenses" USING btree ("origin_proposal_id") WHERE "expenses"."origin_proposal_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "tasks_origin_proposal_unique" ON "tasks" USING btree ("origin_proposal_id") WHERE "tasks"."origin_proposal_id" is not null;

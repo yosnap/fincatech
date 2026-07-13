@@ -1,4 +1,6 @@
-import { boolean, integer, jsonb, pgTable, real, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { boolean, integer, jsonb, pgTable, real, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { proposals } from './governance'
 import { users } from './users'
 
 // Importes SIEMPRE en céntimos enteros (nunca float) — ver server/services/debt-splitter.ts.
@@ -20,9 +22,17 @@ export const expenses = pgTable('expenses', {
   // Solo se rellenan cuando el gasto viene de OCR (Fase 4) — null en gastos manuales.
   ocrConfidence: real('ocr_confidence'),
   ocrCostUsd: real('ocr_cost_usd'),
+  // No nulo solo para type='derrama' (Fase 7) — guard idempotente de executeApprovedProposal:
+  // una propuesta aprobada nunca genera dos derramas.
+  originProposalId: uuid('origin_proposal_id').references(() => proposals.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
-})
+}, table => [
+  // Red de seguridad a nivel de esquema para la idempotencia de la derrama: aunque el guard
+  // de aplicación (executeApprovedProposalCore) tenga un bug o se inserte por otra vía, la
+  // DB nunca permite dos expenses para la misma propuesta.
+  uniqueIndex('expenses_origin_proposal_unique').on(table.originProposalId).where(sql`${table.originProposalId} is not null`)
+])
 
 export const debts = pgTable('debts', {
   id: uuid('id').primaryKey().defaultRandom(),

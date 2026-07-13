@@ -5,7 +5,9 @@ import { writeAuditLog } from '../utils/audit'
 import { splitExpense } from './debt-splitter'
 import { enqueueNotification } from './notification-service'
 
-export type ExpenseType = 'manual' | 'bank_receipt'
+// 'derrama' se crea exclusivamente vía assessment-service.executeApprovedProposal, nunca
+// a través de createExpense (que asume un pagador único excluido de las debts).
+export type ExpenseType = 'manual' | 'bank_receipt' | 'derrama'
 export type ExpenseStatus = 'pending' | 'partial' | 'settled'
 export type DebtStatus = 'pending' | 'pending_confirmation' | 'confirmed'
 

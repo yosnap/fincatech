@@ -69,6 +69,54 @@ plans/                  Planes de implementación por fase
 - Cotizaciones (`quotes`) aceptan un PDF opcional validado por magic bytes y servido vía URL firmada temporal (`GET /api/proposals/[id]/quotes/[quoteId]/attachment`), mismo patrón que los comprobantes de la Fase 3.
 - El Invitado tiene acceso de solo lectura (ve ideas/propuestas y el tally agregado de votos, nunca quién votó qué); todo lo que muta (crear, comentar, promover, cotizar, votar, cerrar) exige `admin`/`owner`.
 
+## Derramas, tareas y evidencia fotográfica (Fase 7)
+
+### Schema y modelos
+
+- `server/db/schema/tasks.ts`: tabla `tasks` (título, descripción, `assigneeId`, `due_date`, prioridad, estado `pending|in_progress|completed`, `origin_proposal_id` nullable — referencia a `proposals.id`, auditada); reutilizable por tareas manuales además de las derivadas de propuestas.
+- `server/db/schema/media.ts`: tabla `media` (repositorio centralizado compartido con Fase 8), con campos `owner_type` (`task`|`gallery`), `task_id` nullable, `media_type` (`before`|`after`|`general`), ruta en MinIO, autor, timestamp. Validación de archivos en cliente (máx 10 MB tras compresión, JPEG/PNG).
+- Índices únicos parciales en DB como red de seguridad idempotente: `expenses_origin_proposal_unique` y `tasks_origin_proposal_unique` sobre `origin_proposal_id WHERE origin_proposal_id IS NOT NULL`, evitando duplicados por reintentos de aplicación.
+
+### Flujo transaccional: de propuesta aprobada a derrama + tarea
+
+Cuando se cierra una propuesta en estado `'approved'` (Fase 6), se ejecuta un flujo atómico de dos pasos:
+
+1. **`closeProposalCore(tx: TxExecutor, input)`**: actualiza estado propuesta a `'closed'`, registra cierre en auditoría.
+2. **`executeApprovedProposalCore(tx: TxExecutor, input)`**: crea derrama (expense tipo `'derrama'`, reparto entre **todos** los copropietarios activos via `debt-splitter` de Fase 3, acreedor = usuario sistema "Fondo Común" ya definido en Fase 3) + crea tarea de ejecución vinculada (`origin_proposal_id` = proposal.id), ambas dentro de la misma transacción.
+
+Ambas funciones reciben un `TxExecutor` (parámetro, no abren su propia transacción) — esto permite componerlas en un único `db.transaction()` en `server/api/proposals/[id]/close.post.ts`. Si cualquiera falla, la transacción se revierte completamente (atomicidad garantizada); si se reintentan, los índices únicos parciales previenen duplicados de gasto/tarea.
+
+Guard idempotente: se comprueba si el gasto con esa `origin_proposal_id` ya existe antes de crearlo; si existe, se devuelve el expense.id y task.id sin repetir.
+
+### Patrón arquitectónico reutilizable: composición transaccional
+
+La extracción de funciones `*Core(tx, input)` que reciben un `TxExecutor` permite que múltiples operaciones de negocio se ejecuten dentro de una sola transacción de base de datos cuando deben ser atómicas. Ejemplo:
+
+```typescript
+// server/api/proposals/[id]/close.post.ts
+await db.transaction(async (tx) => {
+  await closeProposalCore(tx, { proposalId: input.id });
+  await executeApprovedProposalCore(tx, { proposalId: input.id, ... });
+  // Si ambas lo completan, COMMIT. Si alguna falla, ROLLBACK total.
+});
+```
+
+Patrón documentado en `server/db/client.ts` (tipo `TxExecutor`, métodos disponibles idénticos a `db`).
+
+### CRUD de tareas y notificaciones
+
+- `server/services/task-service.ts`: `createTask`, `updateTask`, `transitionState` (cambios de estado auditados).
+- `server/api/tasks/index.post.ts`: crear tarea (con `assigneeId` opcional); enqueues notificación "nueva tarea asignada" vía `notification-service` (Fase 5) si hay asignado.
+- `server/api/tasks/[id].patch.ts`: actualizar tarea; re-enqueues "tarea asignada" si `assigneeId` cambia.
+- `server/api/tasks/[id]/media.post.ts`: subir fotos Antes/Después, comprimidas en cliente, validadas por magic bytes, almacenadas en MinIO vía `storage.ts`, insertadas en `media` con `task_id` y tipo etiquetado.
+- Cambios de estado de tarea quedan auditados en `audit_log`.
+
+### Autorización
+
+- Solo `admin`/`owner` pueden crear, reasignar, transicionar o cerrar tareas (no hay RBAC granular por tarea — equipo de confianza pequeño, decisión de diseño explícita).
+- Invitado: lectura agregada de tareas y fotos, sin acción; nunca ve desglose de deuda individual de la derrama (heredado de `canSeeIndividualDebt` de Fase 2).
+- Las derramas se auditan como eventos de dominio (usuario/timestamp/cambio).
+
 ## Decisiones clave
 
 | Decisión | Razón |

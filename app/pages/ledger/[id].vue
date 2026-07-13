@@ -23,6 +23,12 @@ interface ExpenseDetail {
   debts?: Debt[]
 }
 
+const TYPE_LABELS: Record<string, string> = {
+  manual: 'Gasto manual',
+  bank_receipt: 'Recibo bancario',
+  derrama: 'Derrama'
+}
+
 const route = useRoute()
 const session = authClient.useSession()
 const { data, refresh } = await useFetch<{ expense: ExpenseDetail }>(`/api/expenses/${route.params.id}`)
@@ -103,7 +109,7 @@ async function viewProof(debtId: string) {
         {{ formatEuros(data.expense.amountCents) }}
       </p>
       <p class="text-sm text-muted">
-        {{ data.expense.type === 'bank_receipt' ? 'Recibo bancario' : 'Gasto manual' }} ·
+        {{ TYPE_LABELS[data.expense.type] ?? data.expense.type }} ·
         {{ data.expense.hasProof ? 'Con comprobante' : 'Sin comprobante' }}
       </p>
     </UCard>
