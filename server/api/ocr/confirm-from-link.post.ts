@@ -17,6 +17,7 @@ const bodySchema = z.object({
   contentType: z.enum(['image/jpeg', 'image/png']),
   description: z.string().min(1),
   amountCents: z.number().int().positive(),
+  taxCents: z.number().int().min(0).optional(),
   participantIds: z.array(z.string().min(1)).min(1),
   confidence: z.number().min(0).max(1),
   costUsd: z.number().min(0)
@@ -51,6 +52,7 @@ export default defineEventHandler(async (event) => {
   const expense = await createExpense({
     actorId: actor.id,
     amountCents: body.amountCents,
+    taxCents: body.taxCents,
     description: body.description,
     type: 'manual',
     participantIds: body.participantIds,

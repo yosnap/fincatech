@@ -7,6 +7,7 @@ import { requireRole } from '../../utils/rbac'
 
 const bodySchema = z.object({
   amountCents: z.number().int().positive(),
+  taxCents: z.number().int().min(0).optional(),
   description: z.string().min(1),
   type: z.enum(['manual', 'bank_receipt']),
   participantIds: z.array(z.string().min(1)).min(1),
@@ -38,6 +39,7 @@ export default defineEventHandler(async (event) => {
   const expense = await createExpense({
     actorId: actor.id,
     amountCents: body.amountCents,
+    taxCents: body.taxCents,
     description: body.description,
     type: body.type,
     participantIds: body.participantIds,

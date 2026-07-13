@@ -19,6 +19,9 @@ export const expenses = pgTable('expenses', {
   // Snapshot congelado en el momento de creación: [{ userId, amountCents }] para TODOS los
   // participantes (incluido el pagador). Nunca se recalcula si cambia N después.
   participantSnapshot: jsonb('participant_snapshot').notNull(),
+  // Impuestos (IVA) del ticket, ya incluidos en amountCents (no se suma aparte) — informativo,
+  // extraído por OCR o introducido a mano. Null si no aplica/no se conoce.
+  taxCents: integer('tax_cents'),
   // Solo se rellenan cuando el gasto viene de OCR (Fase 4) — null en gastos manuales.
   ocrConfidence: real('ocr_confidence'),
   ocrCostUsd: real('ocr_cost_usd'),

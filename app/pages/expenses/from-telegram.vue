@@ -50,6 +50,7 @@ const draft = computed<Draft | null>(() => {
 
 const description = ref('')
 const amount = ref('')
+const tax = ref('')
 const selectedIds = ref<string[]>([])
 
 watchEffect(() => {
@@ -58,6 +59,7 @@ watchEffect(() => {
   const parts = [d.extraction.vendor, d.extraction.concept].filter(Boolean)
   description.value = parts.length > 0 ? parts.join(' — ') : 'Ticket sin datos legibles'
   amount.value = d.extraction.amountCents != null ? (d.extraction.amountCents / 100).toFixed(2) : ''
+  tax.value = d.extraction.taxCents != null ? (d.extraction.taxCents / 100).toFixed(2) : ''
 })
 
 watchEffect(() => {
@@ -89,6 +91,7 @@ async function onConfirm() {
   errorMessage.value = ''
   confirming.value = true
   try {
+    const taxCents = tax.value ? Math.round(Number(tax.value) * 100) : undefined
     const result = await $fetch<{ expense: { id: string } }>('/api/ocr/confirm-from-link', {
       method: 'POST',
       body: {
@@ -96,6 +99,7 @@ async function onConfirm() {
         contentType: draft.value.contentType,
         description: description.value,
         amountCents,
+        taxCents: taxCents != null && Number.isFinite(taxCents) && taxCents >= 0 ? taxCents : undefined,
         participantIds: selectedIds.value,
         confidence: draft.value.extraction.confidence,
         costUsd: draft.value.costUsd
@@ -159,6 +163,16 @@ async function onConfirm() {
               step="0.01"
               min="0.01"
               required
+              class="w-full"
+            />
+          </UFormField>
+
+          <UFormField label="IVA / impuestos (opcional, ya incluido en el importe)">
+            <UInput
+              v-model="tax"
+              type="number"
+              step="0.01"
+              min="0"
               class="w-full"
             />
           </UFormField>

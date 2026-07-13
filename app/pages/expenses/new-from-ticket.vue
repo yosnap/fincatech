@@ -30,6 +30,7 @@ const costUsd = ref(0)
 
 const description = ref('')
 const amount = ref('')
+const tax = ref('')
 const confidence = ref(0)
 const selectedIds = ref<string[]>([])
 
@@ -62,6 +63,7 @@ async function onExtract() {
     })
     description.value = buildDescription(result.extraction)
     amount.value = result.extraction.amountCents != null ? (result.extraction.amountCents / 100).toFixed(2) : ''
+    tax.value = result.extraction.taxCents != null ? (result.extraction.taxCents / 100).toFixed(2) : ''
     confidence.value = result.extraction.confidence
     costUsd.value = result.costUsd
     step.value = 'review'
@@ -100,6 +102,10 @@ async function onConfirm() {
     formData.append('file', file.value)
     formData.append('description', description.value)
     formData.append('amountCents', String(amountCents))
+    if (tax.value) {
+      const taxCents = Math.round(Number(tax.value) * 100)
+      if (Number.isFinite(taxCents) && taxCents >= 0) formData.append('taxCents', String(taxCents))
+    }
     formData.append('participantIds', JSON.stringify(selectedIds.value))
     formData.append('confidence', String(confidence.value))
     formData.append('costUsd', String(costUsd.value))
@@ -191,6 +197,16 @@ async function onConfirm() {
             step="0.01"
             min="0.01"
             required
+            class="w-full"
+          />
+        </UFormField>
+
+        <UFormField label="IVA / impuestos (opcional, ya incluido en el importe)">
+          <UInput
+            v-model="tax"
+            type="number"
+            step="0.01"
+            min="0"
             class="w-full"
           />
         </UFormField>

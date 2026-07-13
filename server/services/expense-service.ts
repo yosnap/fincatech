@@ -18,6 +18,8 @@ interface CreateExpenseInput {
   type: ExpenseType
   participantIds: string[]
   hasProof: boolean
+  // Impuestos (IVA) ya incluidos en amountCents — informativo, extraído por OCR o a mano.
+  taxCents?: number
   // Solo presentes cuando el gasto viene de la extracción OCR (Fase 4).
   ocrConfidence?: number
   ocrCostUsd?: number
@@ -45,6 +47,7 @@ export async function createExpense(input: CreateExpenseInput) {
       hasProof: input.hasProof,
       status: isBankReceipt || shares.length === 1 ? 'settled' : 'pending',
       participantSnapshot: shares,
+      taxCents: input.taxCents ?? null,
       ocrConfidence: input.ocrConfidence ?? null,
       ocrCostUsd: input.ocrCostUsd ?? null
     }).returning()

@@ -15,6 +15,7 @@ interface ExpenseDetail {
   id: string
   description: string
   amountCents: number
+  taxCents: number | null
   type: string
   hasProof: boolean
   status: string
@@ -92,6 +93,12 @@ async function viewProof(debtId: string) {
       <p class="text-2xl font-semibold">
         {{ formatEuros(data.expense.amountCents) }}
       </p>
+      <p
+        v-if="data.expense.taxCents != null"
+        class="text-sm text-muted"
+      >
+        de los cuales IVA/impuestos: {{ formatEuros(data.expense.taxCents) }}
+      </p>
       <p class="text-sm text-muted">
         {{ TYPE_LABELS[data.expense.type] ?? data.expense.type }} ·
         {{ data.expense.hasProof ? 'Con comprobante' : 'Sin comprobante' }}
@@ -164,6 +171,12 @@ async function viewProof(debtId: string) {
             </UButton>
           </div>
         </div>
+        <p
+          v-if="!data.expense.debts.length"
+          class="py-4 text-center text-sm text-muted"
+        >
+          Sin cuotas — gasto individual, no se repartió con nadie más.
+        </p>
       </div>
     </UCard>
 

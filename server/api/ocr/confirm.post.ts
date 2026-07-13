@@ -14,6 +14,7 @@ const MAX_SIZE_BYTES = 10 * 1024 * 1024
 const fieldsSchema = z.object({
   description: z.string().min(1),
   amountCents: z.coerce.number().int().positive(),
+  taxCents: z.coerce.number().int().min(0).optional(),
   participantIds: z.string().transform(raw => JSON.parse(raw) as unknown).pipe(z.array(z.string().min(1)).min(1)),
   confidence: z.coerce.number().min(0).max(1),
   costUsd: z.coerce.number().min(0)
@@ -69,6 +70,7 @@ export default defineEventHandler(async (event) => {
     type: 'manual',
     participantIds: body.participantIds,
     hasProof: true,
+    taxCents: body.taxCents,
     ocrConfidence: body.confidence,
     ocrCostUsd: body.costUsd,
     proof: { objectName, contentType: file.type }
