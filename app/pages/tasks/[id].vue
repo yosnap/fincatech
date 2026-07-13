@@ -17,12 +17,40 @@ interface Task {
   status: string
   priority: string
   createdBy: string
+  assigneeId: string | null
   discardedAt: string | null
+}
+
+interface Member {
+  id: string
+  name: string
+  role: string
 }
 
 const route = useRoute()
 const session = authClient.useSession()
 const { data, refresh } = await useFetch<{ task: Task, media: MediaItem[] }>(`/api/tasks/${route.params.id}`)
+const { data: membersData } = await useFetch<{ members: Member[] }>('/api/expenses/participants')
+
+const assigneeOptions = computed(() => (membersData.value?.members ?? []).map(m => ({ label: m.name, value: m.id })))
+const assigneeName = computed(() => {
+  const id = data.value?.task.assigneeId
+  if (!id) return null
+  return (membersData.value?.members ?? []).find(m => m.id === id)?.name ?? id
+})
+
+async function reassign(newAssigneeId: string) {
+  errorMessage.value = ''
+  busy.value = true
+  try {
+    await $fetch(`/api/tasks/${route.params.id}`, { method: 'PATCH', body: { assigneeId: newAssigneeId } })
+    await refresh()
+  } catch {
+    errorMessage.value = 'No se pudo reasignar la tarea'
+  } finally {
+    busy.value = false
+  }
+}
 
 const STATUS_LABELS: Record<string, string> = { todo: 'Por hacer', in_progress: 'En progreso', done: 'Completado' }
 
@@ -116,6 +144,19 @@ async function viewPhoto(mediaId: string) {
       >
         {{ data.task.description }}
       </p>
+
+      <div class="mt-3 flex items-center gap-2 text-sm">
+        <span class="text-muted">Asignado a:</span>
+        <USelect
+          v-if="canManage && !data.task.discardedAt"
+          :model-value="data.task.assigneeId ?? undefined"
+          :items="assigneeOptions"
+          placeholder="Sin asignar"
+          class="w-48"
+          @update:model-value="(value) => reassign(value as string)"
+        />
+        <span v-else>{{ assigneeName ?? 'Sin asignar' }}</span>
+      </div>
 
       <UAlert
         v-if="data.task.discardedAt"

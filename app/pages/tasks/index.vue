@@ -12,8 +12,20 @@ interface Task {
   assigneeId: string | null
 }
 
+interface Member {
+  id: string
+  name: string
+  role: string
+}
+
 const session = authClient.useSession()
 const { data, refresh } = await useFetch<{ tasks: Task[] }>('/api/tasks')
+const { data: membersData } = await useFetch<{ members: Member[] }>('/api/expenses/participants')
+
+const memberName = computed(() => {
+  const map = new Map((membersData.value?.members ?? []).map(m => [m.id, m.name]))
+  return (id: string | null) => (id ? map.get(id) ?? id : null)
+})
 
 const STATUS_COLUMNS = [
   { key: 'todo', label: 'Por hacer' },
@@ -34,16 +46,20 @@ function tasksByStatus(status: string) {
 
 const title = ref('')
 const description = ref('')
+const assigneeId = ref<string | undefined>(undefined)
 const submitting = ref(false)
 const errorMessage = ref('')
+
+const assigneeOptions = computed(() => (membersData.value?.members ?? []).map(m => ({ label: m.name, value: m.id })))
 
 async function onSubmit() {
   errorMessage.value = ''
   submitting.value = true
   try {
-    await $fetch('/api/tasks', { method: 'POST', body: { title: title.value, description: description.value } })
+    await $fetch('/api/tasks', { method: 'POST', body: { title: title.value, description: description.value, assigneeId: assigneeId.value } })
     title.value = ''
     description.value = ''
+    assigneeId.value = undefined
     await refresh()
   } catch {
     errorMessage.value = 'No se pudo crear la tarea'
@@ -79,6 +95,14 @@ async function onSubmit() {
         <UFormField label="Descripción (opcional)">
           <UTextarea
             v-model="description"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField label="Asignar a (opcional)">
+          <USelect
+            v-model="assigneeId"
+            :items="assigneeOptions"
+            placeholder="Sin asignar"
             class="w-full"
           />
         </UFormField>
@@ -118,12 +142,22 @@ async function onSubmit() {
             <p class="text-sm font-medium">
               {{ task.title }}
             </p>
-            <UBadge
-              size="sm"
-              variant="soft"
-            >
-              {{ PRIORITY_LABELS[task.priority] ?? task.priority }}
-            </UBadge>
+            <div class="flex flex-wrap items-center gap-1">
+              <UBadge
+                size="sm"
+                variant="soft"
+              >
+                {{ PRIORITY_LABELS[task.priority] ?? task.priority }}
+              </UBadge>
+              <UBadge
+                v-if="memberName(task.assigneeId)"
+                size="sm"
+                variant="soft"
+                color="neutral"
+              >
+                {{ memberName(task.assigneeId) }}
+              </UBadge>
+            </div>
           </NuxtLink>
           <p
             v-if="!tasksByStatus(column.key).length"

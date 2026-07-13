@@ -111,6 +111,7 @@ Patrón documentado en `server/db/client.ts` (tipo `TxExecutor`, métodos dispon
 - `server/api/tasks/[id].patch.ts`: actualizar tarea; re-enqueues "tarea asignada" si `assigneeId` cambia.
 - `server/api/tasks/[id]/media.post.ts`: subir fotos Antes/Después, comprimidas en cliente, validadas por magic bytes, almacenadas en MinIO vía `storage.ts`, insertadas en `media` con `task_id` y tipo etiquetado.
 - Cambios de estado de tarea quedan auditados en `audit_log`.
+- **UI de asignación (2026-07-13):** el backend ya soportaba `assigneeId` desde la Fase 7, pero la UI no lo exponía. Se añadió selector de asignado (cualquier admin/owner) al crear una tarea (`app/pages/tasks/index.vue`) y reasignación desde el detalle (`app/pages/tasks/[id].vue`) — cualquier admin/owner puede reasignar a cualquier otro admin/owner, no solo el creador (mismo RBAC que ya existía en `PATCH /api/tasks/[id]`, sin cambios de permisos, solo UI nueva).
 
 ### Autorización
 
