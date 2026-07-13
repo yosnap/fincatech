@@ -44,20 +44,20 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const busyDebtId = ref<string | null>(null)
-const errorMessage = ref('')
+const toast = useToast()
 
 function formatEuros(cents: number) {
   return (cents / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
 }
 
 async function confirmDebt(debtId: string) {
-  errorMessage.value = ''
   busyDebtId.value = debtId
   try {
     await $fetch(`/api/debts/${debtId}/confirm`, { method: 'POST' })
     await refresh()
+    toast.add({ title: 'Cuota confirmada', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo confirmar la cuota'
+    toast.add({ title: 'No se pudo confirmar la cuota', color: 'error' })
   } finally {
     busyDebtId.value = null
   }
@@ -104,13 +104,6 @@ async function viewProof(debtId: string) {
         {{ data.expense.hasProof ? 'Con comprobante' : 'Sin comprobante' }}
       </p>
     </UCard>
-
-    <UAlert
-      v-if="errorMessage"
-      color="error"
-      variant="soft"
-      :title="errorMessage"
-    />
 
     <UCard v-if="data.expense.debts">
       <template #header>

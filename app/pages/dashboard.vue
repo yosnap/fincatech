@@ -68,17 +68,17 @@ const paidToMeInPeriod = computed(() => (data.value?.paidAsCreditor ?? []).filte
 const totalPaidByMeInPeriod = computed(() => paidByMeInPeriod.value.reduce((sum, d) => sum + d.amountCents, 0))
 const totalPaidToMeInPeriod = computed(() => paidToMeInPeriod.value.reduce((sum, d) => sum + d.amountCents, 0))
 
+const toast = useToast()
 const busyId = ref<string | null>(null)
-const errorMessage = ref('')
 
 async function confirmDebt(debtId: string) {
-  errorMessage.value = ''
   busyId.value = debtId
   try {
     await $fetch(`/api/debts/${debtId}/confirm`, { method: 'POST' })
     await refresh()
+    toast.add({ title: 'Cuota confirmada', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo confirmar la cuota'
+    toast.add({ title: 'No se pudo confirmar la cuota', color: 'error' })
   } finally {
     busyId.value = null
   }
@@ -108,13 +108,6 @@ async function confirmDebt(debtId: string) {
         {{ netBalanceCents > 0 ? 'Te deben más de lo que debes' : netBalanceCents < 0 ? 'Debes más de lo que te deben' : 'Estás al día' }}
       </p>
     </UCard>
-
-    <UAlert
-      v-if="errorMessage"
-      color="error"
-      variant="soft"
-      :title="errorMessage"
-    />
 
     <UCard>
       <template #header>

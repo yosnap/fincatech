@@ -23,7 +23,7 @@ const type = ref<'manual' | 'bank_receipt'>('manual')
 const hasProof = ref(true)
 const selectedIds = ref<string[]>([])
 const submitting = ref(false)
-const errorMessage = ref('')
+const toast = useToast()
 
 watchEffect(() => {
   const currentId = session.value.data?.user.id
@@ -40,14 +40,13 @@ function toggleParticipant(memberId: string, checked: boolean) {
 }
 
 async function onSubmit() {
-  errorMessage.value = ''
   const amountCents = Math.round(Number(amount.value) * 100)
   if (!Number.isFinite(amountCents) || amountCents <= 0) {
-    errorMessage.value = 'Importe inválido'
+    toast.add({ title: 'Importe inválido', color: 'warning' })
     return
   }
   if (selectedIds.value.length === 0) {
-    errorMessage.value = 'Selecciona al menos un participante'
+    toast.add({ title: 'Selecciona al menos un participante', color: 'warning' })
     return
   }
 
@@ -66,8 +65,9 @@ async function onSubmit() {
     amount.value = ''
     description.value = ''
     emit('created')
+    toast.add({ title: 'Gasto creado', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo crear el gasto'
+    toast.add({ title: 'No se pudo crear el gasto', color: 'error' })
   } finally {
     submitting.value = false
   }
@@ -129,13 +129,6 @@ async function onSubmit() {
           />
         </div>
       </UFormField>
-
-      <UAlert
-        v-if="errorMessage"
-        color="error"
-        variant="soft"
-        :title="errorMessage"
-      />
 
       <UButton
         type="submit"

@@ -14,7 +14,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const file = defineModel<File | null>({ default: null })
-const errorMessage = ref('')
+const toast = useToast()
 
 function matchesAccept(type: string): boolean {
   return props.accept.split(',').some((pattern) => {
@@ -35,16 +35,11 @@ function validate(candidate: File): string | null {
 }
 
 watch(file, (candidate) => {
-  if (!candidate) {
-    errorMessage.value = ''
-    return
-  }
+  if (!candidate) return
   const validationError = validate(candidate)
   if (validationError) {
-    errorMessage.value = validationError
+    toast.add({ title: validationError, color: 'warning' })
     file.value = null
-  } else {
-    errorMessage.value = ''
   }
 })
 </script>
@@ -58,12 +53,6 @@ watch(file, (candidate) => {
       :description="description"
       icon="i-lucide-image-plus"
       class="min-h-32 w-full"
-    />
-    <UAlert
-      v-if="errorMessage"
-      color="error"
-      variant="soft"
-      :title="errorMessage"
     />
   </div>
 </template>

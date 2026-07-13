@@ -23,10 +23,9 @@ const endDate = ref('')
 const notes = ref('')
 const submitting = ref(false)
 const busyId = ref<string | null>(null)
-const errorMessage = ref('')
+const toast = useToast()
 
 async function onSubmit() {
-  errorMessage.value = ''
   submitting.value = true
   try {
     await $fetch('/api/reservations', {
@@ -37,22 +36,23 @@ async function onSubmit() {
     endDate.value = ''
     notes.value = ''
     await refresh()
+    toast.add({ title: 'Reserva creada', color: 'success' })
   } catch (error) {
     const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
-    errorMessage.value = statusMessage ?? 'No se pudo crear la reserva'
+    toast.add({ title: statusMessage ?? 'No se pudo crear la reserva', color: 'error' })
   } finally {
     submitting.value = false
   }
 }
 
 async function cancelReservation(id: string) {
-  errorMessage.value = ''
   busyId.value = id
   try {
     await $fetch(`/api/reservations/${id}`, { method: 'DELETE' })
     await refresh()
+    toast.add({ title: 'Reserva cancelada', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo cancelar la reserva'
+    toast.add({ title: 'No se pudo cancelar la reserva', color: 'error' })
   } finally {
     busyId.value = null
   }
@@ -113,13 +113,6 @@ async function cancelReservation(id: string) {
         </UButton>
       </form>
     </UCard>
-
-    <UAlert
-      v-if="errorMessage"
-      color="error"
-      variant="soft"
-      :title="errorMessage"
-    />
 
     <UCard>
       <template #header>

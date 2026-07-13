@@ -24,11 +24,10 @@ const emit = defineEmits<{ uploaded: [] }>()
 
 const file = ref<File | null>(null)
 const busy = ref(false)
-const errorMessage = ref('')
+const toast = useToast()
 
 async function upload() {
   if (!file.value) return
-  errorMessage.value = ''
   busy.value = true
   try {
     const formData = new FormData()
@@ -38,10 +37,11 @@ async function upload() {
     }
     await $fetch(props.uploadUrl, { method: 'POST', body: formData })
     file.value = null
+    toast.add({ title: 'Archivo subido', color: 'success' })
     emit('uploaded')
   } catch (error) {
     const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
-    errorMessage.value = statusMessage ?? 'No se pudo subir el archivo. Inténtalo de nuevo.'
+    toast.add({ title: statusMessage ?? 'No se pudo subir el archivo. Inténtalo de nuevo.', color: 'error' })
   } finally {
     busy.value = false
   }
@@ -56,12 +56,6 @@ async function upload() {
       :max-size-mb="maxSizeMb"
       :label="label"
       :description="description"
-    />
-    <UAlert
-      v-if="errorMessage"
-      color="error"
-      variant="soft"
-      :title="errorMessage"
     />
     <UButton
       size="sm"

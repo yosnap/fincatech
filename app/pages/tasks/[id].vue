@@ -39,14 +39,16 @@ const assigneeName = computed(() => {
   return (membersData.value?.members ?? []).find(m => m.id === id)?.name ?? id
 })
 
+const toast = useToast()
+
 async function reassign(newAssigneeId: string) {
-  errorMessage.value = ''
   busy.value = true
   try {
     await $fetch(`/api/tasks/${route.params.id}`, { method: 'PATCH', body: { assigneeId: newAssigneeId } })
     await refresh()
+    toast.add({ title: 'Tarea reasignada', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo reasignar la tarea'
+    toast.add({ title: 'No se pudo reasignar la tarea', color: 'error' })
   } finally {
     busy.value = false
   }
@@ -60,14 +62,20 @@ const canManage = computed(() => currentUserRole.value === 'admin' || currentUse
 const canDiscard = computed(() => currentUserRole.value === 'admin' || data.value?.task.createdBy === currentUserId.value)
 
 async function discardTask() {
-  if (!confirm('¿Descartar esta tarea? Se ocultará del listado.')) return
-  errorMessage.value = ''
+  const confirmed = await useConfirmDialog()({
+    title: 'Descartar tarea',
+    description: 'Se ocultará del listado.',
+    confirmLabel: 'Descartar',
+    color: 'error'
+  })
+  if (!confirmed) return
   busy.value = true
   try {
     await $fetch(`/api/tasks/${route.params.id}/discard`, { method: 'POST' })
+    toast.add({ title: 'Tarea descartada', color: 'success' })
     await navigateTo('/tasks')
   } catch {
-    errorMessage.value = 'No se pudo descartar la tarea'
+    toast.add({ title: 'No se pudo descartar la tarea', color: 'error' })
     busy.value = false
   }
 }
@@ -77,13 +85,23 @@ function canDeletePhoto(item: MediaItem) {
 }
 
 async function deletePhoto(mediaId: string) {
-  if (!confirm('¿Borrar esta foto? No se puede deshacer.')) return
-  await $fetch(`/api/media/${mediaId}`, { method: 'DELETE' })
-  await refresh()
+  const confirmed = await useConfirmDialog()({
+    title: 'Borrar foto',
+    description: 'No se puede deshacer.',
+    confirmLabel: 'Borrar',
+    color: 'error'
+  })
+  if (!confirmed) return
+  try {
+    await $fetch(`/api/media/${mediaId}`, { method: 'DELETE' })
+    await refresh()
+    toast.add({ title: 'Foto eliminada', color: 'success' })
+  } catch {
+    toast.add({ title: 'No se pudo borrar la foto', color: 'error' })
+  }
 }
 
 const busy = ref(false)
-const errorMessage = ref('')
 
 function beforePhotos() {
   return (data.value?.media ?? []).filter(m => m.type === 'before')
@@ -93,13 +111,13 @@ function afterPhotos() {
 }
 
 async function setStatus(status: string) {
-  errorMessage.value = ''
   busy.value = true
   try {
     await $fetch(`/api/tasks/${route.params.id}/status`, { method: 'PATCH', body: { status } })
     await refresh()
+    toast.add({ title: 'Estado actualizado', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo cambiar el estado'
+    toast.add({ title: 'No se pudo cambiar el estado', color: 'error' })
   } finally {
     busy.value = false
   }
@@ -211,13 +229,6 @@ async function viewPhoto(mediaId: string) {
         </div>
       </template>
     </UCard>
-
-    <UAlert
-      v-if="errorMessage"
-      color="error"
-      variant="soft"
-      :title="errorMessage"
-    />
 
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <UCard>

@@ -27,7 +27,7 @@ const route = useRoute()
 const session = authClient.useSession()
 const { data: membersData } = await useFetch<{ members: Member[] }>('/api/expenses/participants')
 
-const errorMessage = ref('')
+const toast = useToast()
 const confirming = ref(false)
 
 // atob/TextDecoder (no Buffer): esto corre tanto en SSR como, tras hidratar, en el navegador.
@@ -80,15 +80,14 @@ async function onConfirm() {
   if (!draft.value) return
   const amountCents = Math.round(Number(amount.value) * 100)
   if (!Number.isFinite(amountCents) || amountCents <= 0) {
-    errorMessage.value = 'Importe inválido'
+    toast.add({ title: 'Importe inválido', color: 'warning' })
     return
   }
   if (selectedIds.value.length === 0) {
-    errorMessage.value = 'Selecciona al menos un participante'
+    toast.add({ title: 'Selecciona al menos un participante', color: 'warning' })
     return
   }
 
-  errorMessage.value = ''
   confirming.value = true
   try {
     const taxCents = tax.value ? Math.round(Number(tax.value) * 100) : undefined
@@ -107,7 +106,7 @@ async function onConfirm() {
     })
     await navigateTo(`/ledger/${result.expense.id}`)
   } catch {
-    errorMessage.value = 'No se pudo crear el gasto'
+    toast.add({ title: 'No se pudo crear el gasto', color: 'error' })
   } finally {
     confirming.value = false
   }
@@ -129,13 +128,6 @@ async function onConfirm() {
     />
 
     <template v-else>
-      <UAlert
-        v-if="errorMessage"
-        color="error"
-        variant="soft"
-        :title="errorMessage"
-      />
-
       <UCard>
         <UAlert
           color="warning"

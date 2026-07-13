@@ -21,11 +21,11 @@ interface Extraction {
 const session = authClient.useSession()
 const { data: membersData } = await useFetch<{ members: Member[] }>('/api/expenses/participants')
 
+const toast = useToast()
 const step = ref<'upload' | 'review'>('upload')
 const file = ref<File | null>(null)
 const extracting = ref(false)
 const confirming = ref(false)
-const errorMessage = ref('')
 const costUsd = ref(0)
 
 const description = ref('')
@@ -49,10 +49,9 @@ function buildDescription(extraction: Extraction): string {
 
 async function onExtract() {
   if (!file.value) {
-    errorMessage.value = 'Selecciona una imagen del ticket'
+    toast.add({ title: 'Selecciona una imagen del ticket', color: 'warning' })
     return
   }
-  errorMessage.value = ''
   extracting.value = true
   try {
     const formData = new FormData()
@@ -67,11 +66,15 @@ async function onExtract() {
     confidence.value = result.extraction.confidence
     costUsd.value = result.costUsd
     step.value = 'review'
+    toast.add({ title: 'Ticket extraído', color: 'success' })
   } catch (error) {
     const statusCode = (error as { statusCode?: number })?.statusCode
-    errorMessage.value = statusCode === 503
-      ? 'El OCR no está disponible ahora mismo. Registra el gasto manualmente desde el libro contable.'
-      : 'No se pudo extraer el ticket. Puedes registrar el gasto manualmente.'
+    toast.add({
+      title: statusCode === 503
+        ? 'El OCR no está disponible ahora mismo. Registra el gasto manualmente desde el libro contable.'
+        : 'No se pudo extraer el ticket. Puedes registrar el gasto manualmente.',
+      color: 'error'
+    })
   } finally {
     extracting.value = false
   }
@@ -85,14 +88,13 @@ function toggleParticipant(memberId: string, checked: boolean) {
 
 async function onConfirm() {
   if (!file.value) return
-  errorMessage.value = ''
   const amountCents = Math.round(Number(amount.value) * 100)
   if (!Number.isFinite(amountCents) || amountCents <= 0) {
-    errorMessage.value = 'Importe inválido'
+    toast.add({ title: 'Importe inválido', color: 'warning' })
     return
   }
   if (selectedIds.value.length === 0) {
-    errorMessage.value = 'Selecciona al menos un participante'
+    toast.add({ title: 'Selecciona al menos un participante', color: 'warning' })
     return
   }
 
@@ -115,7 +117,7 @@ async function onConfirm() {
     })
     await navigateTo(`/ledger/${result.expense.id}`)
   } catch {
-    errorMessage.value = 'No se pudo crear el gasto'
+    toast.add({ title: 'No se pudo crear el gasto', color: 'error' })
   } finally {
     confirming.value = false
   }
@@ -127,13 +129,6 @@ async function onConfirm() {
     <h1 class="text-xl font-semibold">
       Nuevo gasto desde ticket (OCR)
     </h1>
-
-    <UAlert
-      v-if="errorMessage"
-      color="error"
-      variant="soft"
-      :title="errorMessage"
-    />
 
     <UCard v-if="step === 'upload'">
       <template #header>

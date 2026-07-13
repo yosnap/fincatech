@@ -2,22 +2,22 @@
 const route = useRoute()
 const token = computed(() => String(route.query.token ?? ''))
 
+const toast = useToast()
 const name = ref('')
 const password = ref('')
-const errorMessage = ref('')
 const loading = ref(false)
 
 async function onSubmit() {
-  errorMessage.value = ''
   loading.value = true
   try {
     await $fetch('/api/auth/accept-invite', {
       method: 'POST',
       body: { token: token.value, name: name.value, password: password.value }
     })
+    toast.add({ title: 'Cuenta creada correctamente', color: 'success' })
     await navigateTo('/')
   } catch {
-    errorMessage.value = 'No se pudo aceptar la invitación. Puede que el enlace haya caducado.'
+    toast.add({ title: 'No se pudo aceptar la invitación. Puede que el enlace haya caducado.', color: 'error' })
   } finally {
     loading.value = false
   }
@@ -63,13 +63,6 @@ async function onSubmit() {
             class="w-full"
           />
         </UFormField>
-
-        <UAlert
-          v-if="errorMessage"
-          color="error"
-          variant="soft"
-          :title="errorMessage"
-        />
 
         <UButton
           type="submit"

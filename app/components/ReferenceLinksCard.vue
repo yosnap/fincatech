@@ -30,10 +30,9 @@ function canDelete(link: ReferenceLink) {
 const newUrl = ref('')
 const newLabel = ref('')
 const busy = ref(false)
-const errorMessage = ref('')
+const toast = useToast()
 
 async function addLink() {
-  errorMessage.value = ''
   busy.value = true
   try {
     await $fetch(`${props.baseUrl}/links`, {
@@ -43,18 +42,30 @@ async function addLink() {
     newUrl.value = ''
     newLabel.value = ''
     await refresh()
+    toast.add({ title: 'Enlace añadido', color: 'success' })
   } catch (error) {
     const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
-    errorMessage.value = statusMessage ?? 'No se pudo añadir el enlace (¿es una URL válida?)'
+    toast.add({ title: statusMessage ?? 'No se pudo añadir el enlace (¿es una URL válida?)', color: 'error' })
   } finally {
     busy.value = false
   }
 }
 
 async function removeLink(linkId: string) {
-  if (!confirm('¿Borrar este enlace?')) return
-  await $fetch(`${props.baseUrl}/links/${linkId}`, { method: 'DELETE' })
-  await refresh()
+  const confirmed = await useConfirmDialog()({
+    title: 'Borrar enlace',
+    description: 'Se eliminará este enlace de referencia.',
+    confirmLabel: 'Borrar',
+    color: 'error'
+  })
+  if (!confirmed) return
+  try {
+    await $fetch(`${props.baseUrl}/links/${linkId}`, { method: 'DELETE' })
+    await refresh()
+    toast.add({ title: 'Enlace borrado', color: 'success' })
+  } catch {
+    toast.add({ title: 'No se pudo borrar el enlace', color: 'error' })
+  }
 }
 </script>
 
@@ -96,14 +107,6 @@ async function removeLink(linkId: string) {
         Sin enlaces todavía
       </p>
     </div>
-
-    <UAlert
-      v-if="errorMessage"
-      color="error"
-      variant="soft"
-      :title="errorMessage"
-      class="mt-4"
-    />
 
     <div
       v-if="canAdd"

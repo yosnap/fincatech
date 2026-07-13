@@ -16,7 +16,7 @@ interface TrashSummary {
 const { data, refresh } = await useFetch<TrashSummary>('/api/admin/trash')
 
 const busyId = ref<string | null>(null)
-const errorMessage = ref('')
+const toast = useToast()
 
 const SECTIONS = [
   { key: 'ideas' as const, label: 'Ideas descartadas', deleteUrl: (id: string) => `/api/ideas/${id}` },
@@ -25,14 +25,20 @@ const SECTIONS = [
 ]
 
 async function deleteForever(deleteUrl: string, id: string) {
-  if (!confirm('¿Eliminar definitivamente? Esta acción NO se puede deshacer.')) return
-  errorMessage.value = ''
+  const confirmed = await useConfirmDialog()({
+    title: 'Eliminar definitivamente',
+    description: 'Esta acción NO se puede deshacer.',
+    confirmLabel: 'Eliminar',
+    color: 'error'
+  })
+  if (!confirmed) return
   busyId.value = id
   try {
     await $fetch(deleteUrl, { method: 'DELETE' })
     await refresh()
+    toast.add({ title: 'Elemento eliminado definitivamente', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo eliminar definitivamente'
+    toast.add({ title: 'No se pudo eliminar definitivamente', color: 'error' })
   } finally {
     busyId.value = null
   }
@@ -47,13 +53,6 @@ async function deleteForever(deleteUrl: string, id: string) {
     <p class="text-sm text-muted">
       Solo Admin. Elementos descartados/cancelados — eliminarlos aquí es definitivo.
     </p>
-
-    <UAlert
-      v-if="errorMessage"
-      color="error"
-      variant="soft"
-      :title="errorMessage"
-    />
 
     <UCard
       v-for="section in SECTIONS"

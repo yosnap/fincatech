@@ -30,18 +30,18 @@ const canCreate = computed(() => {
 const title = ref('')
 const description = ref('')
 const submitting = ref(false)
-const errorMessage = ref('')
+const toast = useToast()
 
 async function onSubmit() {
-  errorMessage.value = ''
   submitting.value = true
   try {
     await $fetch('/api/ideas', { method: 'POST', body: { title: title.value, description: description.value } })
     title.value = ''
     description.value = ''
     await refresh()
+    toast.add({ title: 'Idea creada', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo crear la idea'
+    toast.add({ title: 'No se pudo crear la idea', color: 'error' })
   } finally {
     submitting.value = false
   }
@@ -78,12 +78,6 @@ async function onSubmit() {
             class="w-full"
           />
         </UFormField>
-        <UAlert
-          v-if="errorMessage"
-          color="error"
-          variant="soft"
-          :title="errorMessage"
-        />
         <UButton
           type="submit"
           :loading="submitting"

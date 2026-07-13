@@ -48,12 +48,11 @@ const title = ref('')
 const description = ref('')
 const assigneeId = ref<string | undefined>(undefined)
 const submitting = ref(false)
-const errorMessage = ref('')
+const toast = useToast()
 
 const assigneeOptions = computed(() => (membersData.value?.members ?? []).map(m => ({ label: m.name, value: m.id })))
 
 async function onSubmit() {
-  errorMessage.value = ''
   submitting.value = true
   try {
     await $fetch('/api/tasks', { method: 'POST', body: { title: title.value, description: description.value, assigneeId: assigneeId.value } })
@@ -61,8 +60,9 @@ async function onSubmit() {
     description.value = ''
     assigneeId.value = undefined
     await refresh()
+    toast.add({ title: 'Tarea creada', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo crear la tarea'
+    toast.add({ title: 'No se pudo crear la tarea', color: 'error' })
   } finally {
     submitting.value = false
   }
@@ -106,12 +106,6 @@ async function onSubmit() {
             class="w-full"
           />
         </UFormField>
-        <UAlert
-          v-if="errorMessage"
-          color="error"
-          variant="soft"
-          :title="errorMessage"
-        />
         <UButton
           type="submit"
           :loading="submitting"

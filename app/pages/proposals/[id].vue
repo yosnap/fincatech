@@ -39,7 +39,7 @@ const canManage = computed(() => currentUserRole.value === 'admin' || currentUse
 const canCancel = computed(() => currentUserRole.value === 'admin' || data.value?.proposal.authorId === currentUserId.value)
 const isVoting = computed(() => data.value?.proposal.status === 'voting')
 
-const errorMessage = ref('')
+const toast = useToast()
 const busy = ref(false)
 
 const quoteLabel = ref('')
@@ -52,10 +52,9 @@ function formatEuros(cents: number) {
 }
 
 async function onAddQuote() {
-  errorMessage.value = ''
   const priceCents = Math.round(Number(quotePrice.value) * 100)
   if (!quoteLabel.value.trim() || !Number.isFinite(priceCents) || priceCents <= 0) {
-    errorMessage.value = 'Completa la etiqueta y un importe válido'
+    toast.add({ title: 'Completa la etiqueta y un importe válido', color: 'warning' })
     return
   }
   busy.value = true
@@ -71,8 +70,9 @@ async function onAddQuote() {
     quoteConditions.value = ''
     quoteFile.value = null
     await refresh()
+    toast.add({ title: 'Cotización añadida', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo añadir la cotización'
+    toast.add({ title: 'No se pudo añadir la cotización', color: 'error' })
   } finally {
     busy.value = false
   }
@@ -93,46 +93,63 @@ async function viewPhoto(mediaId: string) {
 }
 
 async function deletePhoto(mediaId: string) {
-  if (!confirm('¿Borrar esta foto? No se puede deshacer.')) return
-  await $fetch(`/api/media/${mediaId}`, { method: 'DELETE' })
-  await refresh()
+  const confirmed = await useConfirmDialog()({
+    title: 'Borrar foto',
+    description: 'Borrar esta foto. No se puede deshacer.',
+    confirmLabel: 'Borrar',
+    color: 'error'
+  })
+  if (!confirmed) return
+  try {
+    await $fetch(`/api/media/${mediaId}`, { method: 'DELETE' })
+    await refresh()
+    toast.add({ title: 'Foto borrada', color: 'success' })
+  } catch {
+    toast.add({ title: 'No se pudo borrar la foto', color: 'error' })
+  }
 }
 
 async function onVote(quoteId: string) {
-  errorMessage.value = ''
   busy.value = true
   try {
     await $fetch(`/api/proposals/${route.params.id}/vote`, { method: 'POST', body: { quoteId } })
     await refresh()
+    toast.add({ title: 'Voto registrado', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo registrar tu voto (¿ya habías votado?)'
+    toast.add({ title: 'No se pudo registrar tu voto (¿ya habías votado?)', color: 'error' })
   } finally {
     busy.value = false
   }
 }
 
 async function onClose(overrideQuoteId?: string) {
-  errorMessage.value = ''
   busy.value = true
   try {
     await $fetch(`/api/proposals/${route.params.id}/close`, { method: 'POST', body: { overrideQuoteId } })
     await refresh()
+    toast.add({ title: 'Votación cerrada', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo cerrar la votación (puede haber empate: el Admin debe elegir la opción ganadora)'
+    toast.add({ title: 'No se pudo cerrar la votación (puede haber empate: el Admin debe elegir la opción ganadora)', color: 'error' })
   } finally {
     busy.value = false
   }
 }
 
 async function onCancel() {
-  if (!confirm('¿Seguro que quieres cancelar esta propuesta? No se podrá revertir.')) return
-  errorMessage.value = ''
+  const confirmed = await useConfirmDialog()({
+    title: 'Cancelar propuesta',
+    description: 'Seguro que quieres cancelar esta propuesta. No se podrá revertir.',
+    confirmLabel: 'Cancelar',
+    color: 'error'
+  })
+  if (!confirmed) return
   busy.value = true
   try {
     await $fetch(`/api/proposals/${route.params.id}/cancel`, { method: 'POST' })
     await refresh()
+    toast.add({ title: 'Propuesta cancelada', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo cancelar la propuesta'
+    toast.add({ title: 'No se pudo cancelar la propuesta', color: 'error' })
   } finally {
     busy.value = false
   }
@@ -187,13 +204,6 @@ async function onCancel() {
         </UButton>
       </template>
     </UCard>
-
-    <UAlert
-      v-if="errorMessage"
-      color="error"
-      variant="soft"
-      :title="errorMessage"
-    />
 
     <UCard>
       <template #header>

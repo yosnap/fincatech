@@ -1,20 +1,20 @@
 <script setup lang="ts">
 definePageMeta({ middleware: ['auth'] })
 
+const toast = useToast()
 const startDate = ref('')
 const endDate = ref('')
-const errorMessage = ref('')
 
 const canDownload = computed(() => !!startDate.value && !!endDate.value && startDate.value <= endDate.value)
 
 function download(format: 'csv' | 'pdf') {
-  errorMessage.value = ''
   if (!canDownload.value) {
-    errorMessage.value = 'Selecciona un rango de fechas válido'
+    toast.add({ title: 'Selecciona un rango de fechas válido', color: 'warning' })
     return
   }
   const url = `/api/export/${format}?start=${startDate.value}&end=${endDate.value}`
   window.open(url, '_blank')
+  toast.add({ title: 'Descarga iniciada', color: 'success' })
 }
 </script>
 
@@ -54,13 +54,6 @@ function download(format: 'csv' | 'pdf') {
             />
           </UFormField>
         </div>
-
-        <UAlert
-          v-if="errorMessage"
-          color="error"
-          variant="soft"
-          :title="errorMessage"
-        />
 
         <div class="flex gap-2">
           <UButton

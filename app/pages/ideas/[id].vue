@@ -55,8 +55,8 @@ const canUploadPhoto = computed(() => currentUserRole.value === 'admin' || curre
 const isOpen = computed(() => data.value?.idea.status === 'new' || data.value?.idea.status === 'discussion')
 
 const commentBody = ref('')
-const errorMessage = ref('')
 const busy = ref(false)
+const toast = useToast()
 
 function canDeletePhoto(item: MediaItem) {
   return currentUserRole.value === 'admin' || item.uploadedBy === currentUserId.value
@@ -68,53 +68,75 @@ async function viewPhoto(mediaId: string) {
 }
 
 async function deletePhoto(mediaId: string) {
-  if (!confirm('¿Borrar esta foto? No se puede deshacer.')) return
-  await $fetch(`/api/media/${mediaId}`, { method: 'DELETE' })
-  await refresh()
+  const confirmed = await useConfirmDialog()({
+    title: 'Borrar foto',
+    description: 'No se puede deshacer.',
+    confirmLabel: 'Borrar',
+    color: 'error'
+  })
+  if (!confirmed) return
+  try {
+    await $fetch(`/api/media/${mediaId}`, { method: 'DELETE' })
+    await refresh()
+    toast.add({ title: 'Foto borrada', color: 'success' })
+  } catch {
+    toast.add({ title: 'No se pudo borrar la foto', color: 'error' })
+  }
 }
 
 async function deleteComment(commentId: string) {
-  if (!confirm('¿Eliminar este comentario? No se puede deshacer.')) return
-  await $fetch(`/api/ideas/${route.params.id}/comments/${commentId}`, { method: 'DELETE' })
-  await refresh()
+  const confirmed = await useConfirmDialog()({
+    title: 'Eliminar comentario',
+    description: 'No se puede deshacer.',
+    confirmLabel: 'Eliminar',
+    color: 'error'
+  })
+  if (!confirmed) return
+  try {
+    await $fetch(`/api/ideas/${route.params.id}/comments/${commentId}`, { method: 'DELETE' })
+    await refresh()
+    toast.add({ title: 'Comentario eliminado', color: 'success' })
+  } catch {
+    toast.add({ title: 'No se pudo eliminar el comentario', color: 'error' })
+  }
 }
 
 async function onComment() {
   if (!commentBody.value.trim()) return
-  errorMessage.value = ''
   busy.value = true
   try {
     await $fetch(`/api/ideas/${route.params.id}/comments`, { method: 'POST', body: { body: commentBody.value } })
     commentBody.value = ''
     await refresh()
+    toast.add({ title: 'Comentario publicado', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo publicar el comentario'
+    toast.add({ title: 'No se pudo publicar el comentario', color: 'error' })
   } finally {
     busy.value = false
   }
 }
 
 async function setStatus(status: 'discussion' | 'discarded') {
-  errorMessage.value = ''
   busy.value = true
   try {
     await $fetch(`/api/ideas/${route.params.id}/status`, { method: 'PATCH', body: { status } })
     await refresh()
+    toast.add({ title: 'Estado actualizado', color: 'success' })
   } catch {
-    errorMessage.value = 'No se pudo cambiar el estado'
+    toast.add({ title: 'No se pudo cambiar el estado', color: 'error' })
   } finally {
     busy.value = false
   }
 }
 
 async function onPromote() {
-  errorMessage.value = ''
   busy.value = true
   try {
     const result = await $fetch<{ proposal: { id: string } }>(`/api/ideas/${route.params.id}/promote`, { method: 'POST' })
+    toast.add({ title: 'Idea promovida a propuesta', color: 'success' })
     await navigateTo(`/proposals/${result.proposal.id}`)
   } catch {
-    errorMessage.value = 'No se pudo promover la idea'
+    toast.add({ title: 'No se pudo promover la idea', color: 'error' })
     busy.value = false
   }
 }
@@ -184,13 +206,6 @@ async function onPromote() {
         </div>
       </template>
     </UCard>
-
-    <UAlert
-      v-if="errorMessage"
-      color="error"
-      variant="soft"
-      :title="errorMessage"
-    />
 
     <UCard>
       <template #header>

@@ -21,15 +21,28 @@ function canDelete(item: MediaItem) {
   return currentUserRole.value === 'admin' || item.uploadedBy === currentUserId.value
 }
 
+const toast = useToast()
+
 async function viewPhoto(id: string) {
   const result = await $fetch<{ url: string }>(`/api/gallery/${id}`)
   window.open(result.url, '_blank')
 }
 
 async function deletePhoto(id: string) {
-  if (!confirm('¿Borrar esta foto? No se puede deshacer.')) return
-  await $fetch(`/api/media/${id}`, { method: 'DELETE' })
-  await refresh()
+  const confirmed = await useConfirmDialog()({
+    title: 'Borrar foto',
+    description: 'No se puede deshacer.',
+    confirmLabel: 'Borrar',
+    color: 'error'
+  })
+  if (!confirmed) return
+  try {
+    await $fetch(`/api/media/${id}`, { method: 'DELETE' })
+    await refresh()
+    toast.add({ title: 'Foto eliminada', color: 'success' })
+  } catch {
+    toast.add({ title: 'No se pudo borrar la foto', color: 'error' })
+  }
 }
 </script>
 

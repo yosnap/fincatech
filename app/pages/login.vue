@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { authClient } from '~/utils/auth-client'
 
+const toast = useToast()
 const email = ref('')
 const password = ref('')
-const errorMessage = ref('')
 const loading = ref(false)
 
 async function onSubmit() {
-  errorMessage.value = ''
   loading.value = true
   const { error } = await authClient.signIn.email({
     email: email.value,
@@ -15,9 +14,10 @@ async function onSubmit() {
   })
   loading.value = false
   if (error) {
-    errorMessage.value = 'Email o contraseña incorrectos'
+    toast.add({ title: 'Email o contraseña incorrectos', color: 'error' })
     return
   }
+  toast.add({ title: 'Sesión iniciada', color: 'success' })
   await navigateTo('/')
 }
 </script>
@@ -54,13 +54,6 @@ async function onSubmit() {
             class="w-full"
           />
         </UFormField>
-
-        <UAlert
-          v-if="errorMessage"
-          color="error"
-          variant="soft"
-          :title="errorMessage"
-        />
 
         <UButton
           type="submit"
