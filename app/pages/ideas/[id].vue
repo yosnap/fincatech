@@ -25,9 +25,20 @@ interface MediaItem {
   uploadedBy: string
 }
 
+interface Member {
+  id: string
+  name: string
+  role: string
+}
+
 const route = useRoute()
 const session = authClient.useSession()
 const { data, refresh } = await useFetch<{ idea: Idea, comments: Comment[], media: MediaItem[] }>(`/api/ideas/${route.params.id}`)
+const { data: membersData } = await useFetch<{ members: Member[] }>('/api/expenses/participants')
+
+function authorName(authorId: string) {
+  return (membersData.value?.members ?? []).find(m => m.id === authorId)?.name ?? authorId
+}
 
 const STATUS_LABELS: Record<string, string> = {
   new: 'Nueva',
@@ -59,6 +70,12 @@ async function viewPhoto(mediaId: string) {
 async function deletePhoto(mediaId: string) {
   if (!confirm('¿Borrar esta foto? No se puede deshacer.')) return
   await $fetch(`/api/media/${mediaId}`, { method: 'DELETE' })
+  await refresh()
+}
+
+async function deleteComment(commentId: string) {
+  if (!confirm('¿Eliminar este comentario? No se puede deshacer.')) return
+  await $fetch(`/api/ideas/${route.params.id}/comments/${commentId}`, { method: 'DELETE' })
   await refresh()
 }
 
@@ -232,9 +249,22 @@ async function onPromote() {
         <div
           v-for="comment in data.comments"
           :key="comment.id"
-          class="py-3 text-sm"
+          class="flex items-start justify-between gap-2 py-3 text-sm"
         >
-          {{ comment.body }}
+          <div>
+            <p class="text-xs font-medium text-muted">
+              {{ authorName(comment.authorId) }} · {{ new Date(comment.createdAt).toLocaleDateString('es-ES') }}
+            </p>
+            <p>{{ comment.body }}</p>
+          </div>
+          <UButton
+            v-if="currentUserRole === 'admin'"
+            icon="i-lucide-trash-2"
+            color="error"
+            variant="ghost"
+            size="xs"
+            @click="deleteComment(comment.id)"
+          />
         </div>
         <p
           v-if="!data.comments.length"
