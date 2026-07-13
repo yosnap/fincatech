@@ -9,6 +9,8 @@ const navLinks = computed(() => {
   const links = [{ label: 'Inicio', to: '/' }]
   if (!session.value) return links
   links.push({ label: 'Libro contable', to: '/ledger' })
+  links.push({ label: 'Ideas', to: '/ideas' })
+  links.push({ label: 'Propuestas', to: '/proposals' })
   links.push({ label: 'Mi perfil', to: '/profile' })
   if (session.value.user.role === 'admin') {
     links.push({ label: 'Miembros', to: '/members' })

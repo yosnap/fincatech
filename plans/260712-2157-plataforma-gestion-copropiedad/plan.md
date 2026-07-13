@@ -30,7 +30,7 @@ Las 8 fases del plan se agrupan en las 4 fases del roadmap del PRD (sección 6).
 | 3 | [Contabilidad gastos y división de deudas](./phase-03-contabilidad-gastos-y-divisi-n-de-deudas.md) | Implemented (mergeado a develop) |
 | 4 | [OCR web GPT-4o Vision](./phase-04-ocr-web-gpt-4o-vision.md) | Implemented, sin verificar contra API real (falta `OPENAI_API_KEY` 👤) — mergeado a develop |
 | 5 | [Bot Telegram y notificaciones](./phase-05-bot-telegram-y-notificaciones.md) | Implemented, sin verificar contra API real (falta `TELEGRAM_BOT_TOKEN` 👤) — mergeado a develop |
-| 6 | [Ideas Propuestas y votación](./phase-06-ideas-propuestas-y-votaci-n.md) | Pending |
+| 6 | [Ideas Propuestas y votación](./phase-06-ideas-propuestas-y-votaci-n.md) | Implemented (mergeado a develop) |
 | 7 | [Derramas tareas y evidencia fotográfica](./phase-07-derramas-tareas-y-evidencia-fotogr-fica.md) | Pending |
 | 8 | [Galería calendario y exportación](./phase-08-galer-a-calendario-y-exportaci-n.md) | Pending |
 
@@ -40,7 +40,7 @@ Las 8 fases del plan se agrupan en las 4 fases del roadmap del PRD (sección 6).
 |-------------|----------------|----------|
 | F1 · MVP financiero | 1, 2, 3 | 3/3 |
 | F2 · Automatización e integraciones | 4, 5 | 2/2 (código completo; ambas sin verificar contra sus APIs reales 👤) |
-| F3 · Gobernanza y operaciones | 6, 7 | 0/2 |
+| F3 · Gobernanza y operaciones | 6, 7 | 1/2 |
 | F4 · Extras operativos | 8 | 0/1 |
 
 ## Dependencies

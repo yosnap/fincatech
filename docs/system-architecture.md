@@ -62,6 +62,13 @@ plans/                  Planes de implementación por fase
 - Preferencias de canal por usuario en `/profile` (`notification_preferences`, email=on/telegram=off por defecto).
 - HTML de notificación siempre escapado antes de interpolar texto libre (descripción de gasto) — ver `escapeHtml` en `notification-service.ts`.
 
+## Ideas, propuestas y votación (Fase 6)
+
+- `server/services/proposal-service.ts`: `promoteIdea` (idea→propuesta, solo Admin o autor, `FOR UPDATE` sobre la idea), `castVote` (`UNIQUE(voter_id, proposal_id)` en DB, `FOR UPDATE` sobre la propuesta), `closeProposal` (idempotente, mayoría simple o `overrideQuoteId` de Admin en empates/sin votos; cerrar exige Admin o autor en ambos caminos).
+- `proposals.winningQuoteId` sin FK real a `quotes.id` a propósito (evita ciclo `proposals↔quotes`); se valida en la capa de aplicación.
+- Cotizaciones (`quotes`) aceptan un PDF opcional validado por magic bytes y servido vía URL firmada temporal (`GET /api/proposals/[id]/quotes/[quoteId]/attachment`), mismo patrón que los comprobantes de la Fase 3.
+- El Invitado tiene acceso de solo lectura (ve ideas/propuestas y el tally agregado de votos, nunca quién votó qué); todo lo que muta (crear, comentar, promover, cotizar, votar, cerrar) exige `admin`/`owner`.
+
 ## Decisiones clave
 
 | Decisión | Razón |
