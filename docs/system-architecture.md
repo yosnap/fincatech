@@ -68,6 +68,7 @@ plans/                  Planes de implementación por fase
 - `proposals.winningQuoteId` sin FK real a `quotes.id` a propósito (evita ciclo `proposals↔quotes`); se valida en la capa de aplicación.
 - Cotizaciones (`quotes`) aceptan un PDF opcional validado por magic bytes y servido vía URL firmada temporal (`GET /api/proposals/[id]/quotes/[quoteId]/attachment`), mismo patrón que los comprobantes de la Fase 3.
 - El Invitado tiene acceso de solo lectura (ve ideas/propuestas y el tally agregado de votos, nunca quién votó qué); todo lo que muta (crear, comentar, promover, cotizar, votar, cerrar) exige `admin`/`owner`.
+- **Galería de fotos (post-hoc, 2026-07-13):** ideas y propuestas admiten fotos de referencia, reutilizando la tabla `media` (extendida con `ideaId`/`proposalId` nullable, mismo patrón polimórfico que `taskId`). `POST/GET /api/ideas/[id]/media`, `POST/GET /api/proposals/[id]/media` — mismo límite 10MB, magic bytes y URL firmada que el resto de subidas del proyecto. Decisión explícita: cualquier `admin`/`owner` puede subir (no solo el autor), a diferencia de otras acciones de gestión sobre la idea/propuesta.
 
 ## Derramas, tareas y evidencia fotográfica (Fase 7)
 

@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { db } from '../../db/client'
-import { ideaComments, ideas } from '../../db/schema'
+import { ideaComments, ideas, media } from '../../db/schema'
 import { requireRole } from '../../utils/rbac'
 
 export default defineEventHandler(async (event) => {
@@ -20,5 +20,10 @@ export default defineEventHandler(async (event) => {
     orderBy: (c, { asc }) => [asc(c.createdAt)]
   })
 
-  return { idea, comments }
+  const photos = await db.query.media.findMany({
+    where: eq(media.ideaId, id),
+    orderBy: (m, { desc }) => [desc(m.createdAt)]
+  })
+
+  return { idea, comments, media: photos.map(m => ({ id: m.id, createdAt: m.createdAt })) }
 })

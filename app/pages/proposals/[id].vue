@@ -20,9 +20,14 @@ interface Proposal {
   winningQuoteId: string | null
 }
 
+interface MediaItem {
+  id: string
+  createdAt: string
+}
+
 const route = useRoute()
 const session = authClient.useSession()
-const { data, refresh } = await useFetch<{ proposal: Proposal, quotes: Quote[], myVoteQuoteId: string | null }>(
+const { data, refresh } = await useFetch<{ proposal: Proposal, quotes: Quote[], myVoteQuoteId: string | null, media: MediaItem[] }>(
   `/api/proposals/${route.params.id}`
 )
 
@@ -32,6 +37,8 @@ const isVoting = computed(() => data.value?.proposal.status === 'voting')
 
 const errorMessage = ref('')
 const busy = ref(false)
+const photoFile = ref<File | null>(null)
+const photoBusy = ref(false)
 
 const quoteLabel = ref('')
 const quotePrice = ref('')
@@ -76,6 +83,32 @@ async function onAddQuote() {
 
 async function viewAttachment(quoteId: string) {
   const result = await $fetch<{ url: string }>(`/api/proposals/${route.params.id}/quotes/${quoteId}/attachment`)
+  window.open(result.url, '_blank')
+}
+
+function onPhotoFileChange(event: Event) {
+  photoFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
+}
+
+async function uploadPhoto() {
+  if (!photoFile.value) return
+  errorMessage.value = ''
+  photoBusy.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', photoFile.value)
+    await $fetch(`/api/proposals/${route.params.id}/media`, { method: 'POST', body: formData })
+    photoFile.value = null
+    await refresh()
+  } catch {
+    errorMessage.value = 'No se pudo subir la foto'
+  } finally {
+    photoBusy.value = false
+  }
+}
+
+async function viewPhoto(mediaId: string) {
+  const result = await $fetch<{ url: string }>(`/api/proposals/${route.params.id}/media/${mediaId}`)
   window.open(result.url, '_blank')
 }
 
@@ -283,5 +316,51 @@ async function onClose(overrideQuoteId?: string) {
     >
       Cerrar votación (gana la opción con más votos)
     </UButton>
+
+    <UCard>
+      <template #header>
+        <h2 class="text-lg font-semibold">
+          Galería
+        </h2>
+      </template>
+
+      <div class="grid grid-cols-3 gap-2">
+        <UButton
+          v-for="photo in data.media"
+          :key="photo.id"
+          size="xs"
+          variant="soft"
+          @click="viewPhoto(photo.id)"
+        >
+          {{ new Date(photo.createdAt).toLocaleDateString('es-ES') }}
+        </UButton>
+      </div>
+      <p
+        v-if="!data.media.length"
+        class="py-2 text-center text-sm text-muted"
+      >
+        Sin fotos todavía
+      </p>
+
+      <div
+        v-if="canManage"
+        class="mt-4 flex items-center gap-2"
+      >
+        <input
+          type="file"
+          accept="image/jpeg,image/png"
+          class="text-sm"
+          @change="onPhotoFileChange"
+        >
+        <UButton
+          size="xs"
+          :loading="photoBusy"
+          :disabled="!photoFile"
+          @click="uploadPhoto"
+        >
+          Subir
+        </UButton>
+      </div>
+    </UCard>
   </div>
 </template>

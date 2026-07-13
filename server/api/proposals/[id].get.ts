@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../../db/client'
-import { proposals, quotes, votes } from '../../db/schema'
+import { media, proposals, quotes, votes } from '../../db/schema'
 import { requireRole } from '../../utils/rbac'
 
 export default defineEventHandler(async (event) => {
@@ -27,9 +27,15 @@ export default defineEventHandler(async (event) => {
     ? await db.query.votes.findFirst({ where: and(eq(votes.proposalId, id), eq(votes.voterId, actor.id)) })
     : undefined
 
+  const photos = await db.query.media.findMany({
+    where: eq(media.proposalId, id),
+    orderBy: (m, { desc }) => [desc(m.createdAt)]
+  })
+
   return {
     proposal,
     quotes: proposalQuotes.map(q => ({ ...q, voteCount: tallyMap[q.id] ?? 0 })),
-    myVoteQuoteId: myVote?.quoteId ?? null
+    myVoteQuoteId: myVote?.quoteId ?? null,
+    media: photos.map(m => ({ id: m.id, createdAt: m.createdAt }))
   }
 })
