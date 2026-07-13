@@ -1,26 +1,52 @@
 <script setup lang="ts">
+import type { NavigationMenuItem } from '@nuxt/ui'
 import { authClient } from '~/utils/auth-client'
 
 // useSession(useFetch), no la variante reactiva sin argumentos: esta última no resuelve
 // URLs relativas en SSR y produce un flash/mismatch de hidratación en la navegación.
 const { data: session } = await authClient.useSession(useFetch)
 
-const navLinks = computed(() => {
-  const links = [{ label: 'Inicio', to: '/' }]
+// Agrupado por categoría (Finanzas / Gobernanza / Inmueble / Cuenta) en vez de una lista
+// plana de 10-12 enlaces — en escritorio se renderizan como desplegables, en móvil como
+// secciones dentro del menú (#body de UHeader).
+const navLinks = computed<NavigationMenuItem[]>(() => {
+  const links: NavigationMenuItem[] = [{ label: 'Inicio', icon: 'i-lucide-house', to: '/' }]
   if (!session.value) return links
-  links.push({ label: 'Libro contable', to: '/ledger' })
-  links.push({ label: 'Central de gastos', to: '/dashboard' })
-  links.push({ label: 'Ideas', to: '/ideas' })
-  links.push({ label: 'Propuestas', to: '/proposals' })
-  links.push({ label: 'Tareas', to: '/tasks' })
-  links.push({ label: 'Galería', to: '/gallery' })
-  links.push({ label: 'Calendario', to: '/calendar' })
-  links.push({ label: 'Exportar', to: '/export' })
-  links.push({ label: 'Mi perfil', to: '/profile' })
+
+  links.push({
+    label: 'Finanzas',
+    icon: 'i-lucide-wallet',
+    children: [
+      { label: 'Libro contable', icon: 'i-lucide-book-open', to: '/ledger' },
+      { label: 'Central de gastos', icon: 'i-lucide-chart-pie', to: '/dashboard' },
+      { label: 'Exportar', icon: 'i-lucide-download', to: '/export' }
+    ]
+  })
+  links.push({
+    label: 'Gobernanza',
+    icon: 'i-lucide-vote',
+    children: [
+      { label: 'Ideas', icon: 'i-lucide-lightbulb', to: '/ideas' },
+      { label: 'Propuestas', icon: 'i-lucide-file-check', to: '/proposals' }
+    ]
+  })
+  links.push({ label: 'Tareas', icon: 'i-lucide-list-checks', to: '/tasks' })
+  links.push({
+    label: 'Inmueble',
+    icon: 'i-lucide-image',
+    children: [
+      { label: 'Galería', icon: 'i-lucide-image', to: '/gallery' },
+      { label: 'Calendario', icon: 'i-lucide-calendar', to: '/calendar' }
+    ]
+  })
+
+  const accountChildren = [{ label: 'Mi perfil', icon: 'i-lucide-user', to: '/profile' }]
   if (session.value.user.role === 'admin') {
-    links.push({ label: 'Miembros', to: '/members' })
-    links.push({ label: 'Papelera', to: '/admin/trash' })
+    accountChildren.push({ label: 'Miembros', icon: 'i-lucide-users', to: '/members' })
+    accountChildren.push({ label: 'Papelera', icon: 'i-lucide-trash-2', to: '/admin/trash' })
   }
+  links.push({ label: 'Cuenta', icon: 'i-lucide-circle-user', children: accountChildren })
+
   return links
 })
 </script>
@@ -28,7 +54,7 @@ const navLinks = computed(() => {
 <template>
   <div>
     <UHeader>
-      <template #left>
+      <template #title>
         <NuxtLink
           to="/"
           class="font-semibold"
@@ -36,6 +62,8 @@ const navLinks = computed(() => {
           Finca La Unión
         </NuxtLink>
       </template>
+
+      <UNavigationMenu :items="navLinks" />
 
       <template #right>
         <UButton
@@ -56,7 +84,13 @@ const navLinks = computed(() => {
         <UColorModeButton />
       </template>
 
-      <UNavigationMenu :items="navLinks" />
+      <template #body>
+        <UNavigationMenu
+          :items="navLinks"
+          orientation="vertical"
+          class="-mx-2.5"
+        />
+      </template>
     </UHeader>
 
     <UMain class="mx-auto w-full max-w-screen-sm px-4 py-6 sm:max-w-screen-md">
