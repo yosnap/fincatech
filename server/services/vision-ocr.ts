@@ -16,27 +16,28 @@ export interface OcrResult {
   costUsd: number
 }
 
-const MODEL = 'gpt-4o'
-// Aproximado a fecha de esta fase — revisar rate card de OpenAI trimestralmente (Risk
-// Assessment del plan de Fase 4). No se factura por esto, es solo para registrar coste.
-const PRICE_PER_IMAGE_USD = 0.03
+const API_BASE_URL = 'https://api.nan.builders/v1'
+const MODEL = 'gemma4'
+// nan.builders es un servicio de comunidad con cuota mensual de tokens por miembro, no
+// facturación por uso — no hay precio por imagen que registrar (a diferencia de OpenAI).
+const PRICE_PER_IMAGE_USD = 0
 
 export function isOcrConfigured(): boolean {
-  return !!getEnv().OPENAI_API_KEY
+  return !!getEnv().NAN_BUILDERS_API_KEY
 }
 
 // Única puerta a la API Vision — reutilizable por el bot de Telegram (Fase 5).
 export async function extractReceiptData(imageBase64: string, mimeType: string): Promise<OcrResult> {
   const env = getEnv()
-  if (!env.OPENAI_API_KEY) {
-    throw createError({ statusCode: 503, statusMessage: 'OCR no configurado (falta OPENAI_API_KEY)' })
+  if (!env.NAN_BUILDERS_API_KEY) {
+    throw createError({ statusCode: 503, statusMessage: 'OCR no configurado (falta NAN_BUILDERS_API_KEY)' })
   }
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch(`${API_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${env.OPENAI_API_KEY}`
+      'Authorization': `Bearer ${env.NAN_BUILDERS_API_KEY}`
     },
     body: JSON.stringify({
       model: MODEL,
