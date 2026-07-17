@@ -1,4 +1,7 @@
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { db } from '../../../db/client'
+import { users } from '../../../db/schema'
 import { FONDO_COMUN_USER_ID } from '../../../db/seed/fondo-comun'
 import { auth } from '../../../utils/auth'
 import { requireRole, roleSchema } from '../../../utils/rbac'
@@ -31,6 +34,11 @@ export default defineEventHandler(async (event) => {
     body: { userId: targetId, role },
     headers: event.headers
   })
+
+  // Cualquier cambio de rol explícito por un Admin cuenta como decisión tomada sobre una
+  // cuenta pendiente de auto-registro (server/api/auth/self-register.post.ts) — se aprueba
+  // aunque el Admin decida dejarla en 'guest' a propósito. setRole no toca additionalFields.
+  await db.update(users).set({ pendingApproval: false }).where(eq(users.id, targetId))
 
   await writeAuditLog({
     actorId: actor.id,

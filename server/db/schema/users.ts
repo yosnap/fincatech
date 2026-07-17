@@ -13,6 +13,11 @@ export const users = pgTable('users', {
   banned: boolean('banned').notNull().default(false),
   banReason: text('ban_reason'),
   banExpires: timestamp('ban_expires', { withTimezone: true }),
+  // true solo para cuentas creadas vía auto-registro público (POST /api/auth/self-register),
+  // hasta que un Admin les cambie el rol desde /members. Invitaciones y bootstrap-admin
+  // nunca lo activan (quedan aprobadas desde el minuto uno). Campo server-owned en Better
+  // Auth (`input: false` en auth.ts) — el cliente nunca puede fijarlo él mismo al registrarse.
+  pendingApproval: boolean('pending_approval').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 })

@@ -94,6 +94,14 @@ const navLinks = computed<NavigationMenuItem[]>(() => {
     </UHeader>
 
     <UMain class="mx-auto w-full max-w-screen-sm px-4 py-6 sm:max-w-screen-md">
+      <UAlert
+        v-if="session?.user?.pendingApproval"
+        color="warning"
+        variant="soft"
+        class="mb-4"
+        title="Tu cuenta está pendiente de aprobación"
+        description="Un administrador debe revisar tu registro. Mientras tanto, tu acceso es de solo lectura."
+      />
       <slot />
     </UMain>
 

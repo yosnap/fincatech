@@ -18,6 +18,7 @@ export default defineEventHandler(async (event) => {
       email: u.email,
       role: u.role ?? 'guest',
       banned: u.banned ?? false,
+      pendingApproval: (u as { pendingApproval?: boolean }).pendingApproval ?? false,
       createdAt: u.createdAt
     }))
   }

@@ -1,8 +1,11 @@
 import { createAuthClient } from 'better-auth/vue'
-import { adminClient } from 'better-auth/client/plugins'
+import { adminClient, inferAdditionalFields } from 'better-auth/client/plugins'
+import type { auth } from '../../server/utils/auth'
 
-// adminClient tipa session.user.role/banned (campos del plugin admin del servidor)
-// sin necesidad de casts `as { role?: string }` en las páginas/middleware.
+// adminClient tipa session.user.role/banned (campos del plugin admin del servidor).
+// inferAdditionalFields tipa session.user.pendingApproval (server/utils/auth.ts,
+// user.additionalFields) — ambos evitan casts `as { role?: string }` repetidos en
+// páginas/middleware.
 export const authClient = createAuthClient({
-  plugins: [adminClient()]
+  plugins: [adminClient(), inferAdditionalFields<typeof auth>()]
 })

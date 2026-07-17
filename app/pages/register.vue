@@ -1,24 +1,24 @@
 <script setup lang="ts">
-import { authClient } from '~/utils/auth-client'
-
 const toast = useToast()
+const name = ref('')
 const email = ref('')
 const password = ref('')
 const loading = ref(false)
 
 async function onSubmit() {
   loading.value = true
-  const { error } = await authClient.signIn.email({
-    email: email.value,
-    password: password.value
-  })
-  loading.value = false
-  if (error) {
-    toast.add({ title: 'Email o contraseña incorrectos', color: 'error' })
-    return
+  try {
+    await $fetch('/api/auth/self-register', {
+      method: 'POST',
+      body: { email: email.value, password: password.value, name: name.value }
+    })
+    toast.add({ title: 'Cuenta creada. Un administrador debe aprobarla para darte acceso completo.', color: 'success' })
+    await navigateTo('/')
+  } catch {
+    toast.add({ title: 'No se pudo crear la cuenta (puede que el email ya esté registrado)', color: 'error' })
+  } finally {
+    loading.value = false
   }
-  toast.add({ title: 'Sesión iniciada', color: 'success' })
-  await navigateTo('/')
 }
 </script>
 
@@ -27,14 +27,30 @@ async function onSubmit() {
     <UCard>
       <template #header>
         <h1 class="text-lg font-semibold">
-          Iniciar sesión
+          Crear cuenta
         </h1>
       </template>
+
+      <UAlert
+        color="neutral"
+        variant="soft"
+        class="mb-4"
+        title="Acceso pendiente de aprobación"
+        description="Al registrarte, un administrador debe aprobar tu cuenta antes de que tengas acceso completo."
+      />
 
       <form
         class="flex flex-col gap-4"
         @submit.prevent="onSubmit"
       >
+        <UFormField label="Nombre">
+          <UInput
+            v-model="name"
+            required
+            class="w-full"
+          />
+        </UFormField>
+
         <UFormField label="Email">
           <UInput
             v-model="email"
@@ -49,8 +65,9 @@ async function onSubmit() {
           <UInput
             v-model="password"
             type="password"
-            autocomplete="current-password"
+            autocomplete="new-password"
             required
+            minlength="8"
             class="w-full"
           />
         </UFormField>
@@ -60,16 +77,16 @@ async function onSubmit() {
           block
           :loading="loading"
         >
-          Entrar
+          Crear cuenta
         </UButton>
       </form>
 
       <template #footer>
         <p class="text-center text-sm text-muted">
-          ¿No tienes cuenta? <NuxtLink
-            to="/register"
+          ¿Ya tienes cuenta? <NuxtLink
+            to="/login"
             class="text-primary hover:underline"
-          >Regístrate</NuxtLink>
+          >Inicia sesión</NuxtLink>
         </p>
       </template>
     </UCard>

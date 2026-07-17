@@ -7,6 +7,7 @@ interface Member {
   email: string
   role: string
   banned: boolean
+  pendingApproval: boolean
   createdAt: string
 }
 
@@ -17,6 +18,12 @@ const ROLE_OPTIONS = [
 ]
 
 const { data, refresh } = await useFetch<{ members: Member[] }>('/api/members')
+
+// Auto-registrados pendientes de aprobación primero, para que el Admin los vea sin buscar.
+const sortedMembers = computed(() => {
+  const members = data.value?.members ?? []
+  return [...members].sort((a, b) => Number(b.pendingApproval) - Number(a.pendingApproval))
+})
 
 const inviteEmail = ref('')
 const inviteRole = ref('owner')
@@ -131,13 +138,21 @@ async function onDeactivate(member: Member) {
 
       <div class="flex flex-col divide-y divide-default">
         <div
-          v-for="member in data?.members ?? []"
+          v-for="member in sortedMembers"
           :key="member.id"
           class="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
         >
           <div>
             <p class="font-medium">
               {{ member.name }}
+              <UBadge
+                v-if="member.pendingApproval"
+                color="warning"
+                variant="soft"
+                class="ml-2"
+              >
+                Pendiente de aprobación
+              </UBadge>
               <UBadge
                 v-if="member.banned"
                 color="error"
@@ -153,6 +168,14 @@ async function onDeactivate(member: Member) {
           </div>
 
           <div class="flex items-center gap-2">
+            <UButton
+              v-if="member.pendingApproval"
+              color="success"
+              size="sm"
+              @click="onRoleChange(member, 'owner')"
+            >
+              Aprobar como Propietario
+            </UButton>
             <USelect
               :model-value="member.role"
               :items="ROLE_OPTIONS"

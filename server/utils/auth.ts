@@ -23,9 +23,25 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
-    // Sin auto-registro público: los usuarios solo se crean vía /api/auth/accept-invite
-    // (server/api/auth/accept-invite.post.ts), que llama a auth.api.createUser server-side.
+    // Sin auto-registro vía el endpoint público de Better Auth (/sign-up/email): los
+    // usuarios se crean vía /api/auth/accept-invite, /api/auth/bootstrap-admin, o
+    // /api/auth/self-register (auto-registro con aprobación de Admin) — los tres llaman a
+    // auth.api.createUser server-side, no al endpoint público, para controlar exactamente
+    // qué rol y qué flags (p. ej. pendingApproval) recibe cada cuenta nueva.
     disableSignUp: true
+  },
+  user: {
+    additionalFields: {
+      // Server-owned (input: false): el cliente nunca puede fijarlo él mismo al llamar a
+      // createUser — solo server/api/auth/self-register.post.ts lo pone a `true` de forma
+      // explícita vía el campo `data` de auth.api.createUser.
+      pendingApproval: {
+        type: 'boolean',
+        required: false,
+        defaultValue: false,
+        input: false
+      }
+    }
   },
   plugins: [
     admin({
