@@ -1,6 +1,8 @@
-import { sql } from 'drizzle-orm'
+import { ne, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '../../db/client'
+import { users } from '../../db/schema'
+import { FONDO_COMUN_USER_ID } from '../../db/seed/fondo-comun'
 import { auth } from '../../utils/auth'
 import { writeAuditLog } from '../../utils/audit'
 
@@ -13,7 +15,12 @@ const bodySchema = z.object({
 // Clave arbitraria fija para el advisory lock de Postgres (serializa bootstraps concurrentes).
 const BOOTSTRAP_LOCK_KEY = 872634001
 
-// Ventana de bootstrap: solo funciona mientras no exista ningún usuario todavía.
+// Ventana de bootstrap: solo funciona mientras no exista ningún usuario REAL todavía —
+// se excluye explícitamente FONDO_COMUN_USER_ID (server/db/seed/fondo-comun.ts), que
+// server/plugins/seed-fondo-comun.ts crea automáticamente en el primer arranque del
+// contenedor, antes de que exista ningún Admin. Sin esta exclusión, el bootstrap queda
+// permanentemente bloqueado con 403 desde el primer despliegue (bug detectado en
+// producción: ensureFondoComunUser() siempre corre primero).
 // En cuanto se crea el primer Admin, este endpoint queda permanentemente inutilizable
 // (no es un signup público — disableSignUp sigue activo para /sign-up/email).
 export default defineEventHandler(async (event) => {
@@ -30,7 +37,7 @@ export default defineEventHandler(async (event) => {
   const created = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${BOOTSTRAP_LOCK_KEY})`)
 
-    const existing = await tx.query.users.findFirst()
+    const existing = await tx.query.users.findFirst({ where: ne(users.id, FONDO_COMUN_USER_ID) })
     if (existing) {
       throw createError({ statusCode: 403, statusMessage: 'Ya existe al menos un usuario; usa invitaciones' })
     }

@@ -132,8 +132,13 @@ curl -X POST https://finca.habiteka.app/api/auth/bootstrap-admin \
 ```
 
 Este endpoint (`server/api/auth/bootstrap-admin.post.ts`) solo funciona mientras no exista
-ningún usuario todavía — en cuanto se crea el primer Admin queda permanentemente
-inutilizable (no es un registro público). El resto de propietarios se añaden después desde
+ningún usuario REAL todavía — excluye explícitamente la cuenta interna `system-fondo-comun`
+(creada automáticamente por `server/plugins/seed-fondo-comun.ts` en cada arranque, antes de
+que exista ningún Admin; bug detectado y corregido en producción: sin esta exclusión, el
+endpoint devolvía 403 desde el primer intento en TODO despliegue nuevo, porque contaba esa
+cuenta de sistema como "ya existe un usuario"). En cuanto se crea el primer Admin real,
+queda permanentemente inutilizable (no es un registro público). El resto de propietarios se
+añaden después desde
 `/members` (invitación por email).
 
 ## 6. Verificación post-deploy
