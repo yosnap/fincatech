@@ -1,0 +1,12 @@
+node_modules
+.nuxt
+.output
+.git
+.env
+.env.*
+!.env.example
+plans
+docs
+*.md
+.vscode
+.DS_Store

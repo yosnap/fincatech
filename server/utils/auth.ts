@@ -40,6 +40,18 @@ export const auth = betterAuth({
       httpOnly: true,
       sameSite: 'lax',
       secure: process.env.NODE_ENV === 'production'
+    },
+    // Detrás del proxy de Easypanel (Traefik) la IP real del cliente viaja en
+    // X-Forwarded-For — sin esto, el rate-limiting cae a un único bucket compartido
+    // para todos los usuarios en vez de limitar por IP real. `trustedProxies` es
+    // obligatorio junto a esto: sin él, un cliente podría falsificar su propia IP en ese
+    // header para eludir el rate-limiting (spoofing). Solo se confía en el valor del
+    // header cuando la conexión llega desde una IP privada — el contenedor nunca recibe
+    // tráfico directo de internet, todo pasa primero por el proxy interno de Easypanel,
+    // así que cualquier conexión desde fuera de estos rangos no puede ser el proxy real.
+    ipAddress: {
+      ipAddressHeaders: ['x-forwarded-for'],
+      trustedProxies: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.1']
     }
   }
 })

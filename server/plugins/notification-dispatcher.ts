@@ -4,6 +4,9 @@ import { dispatchPendingNotifications } from '../services/notification-service'
 // Proceso en background dentro del mismo contenedor (Easypanel = VPS/Docker persistente,
 // no serverless — ver Key Insights de la Fase 5). Vacía el outbox cada 30s.
 export default defineNitroPlugin(() => {
+  // Mismo motivo que env-check.ts: no tiene sentido registrar un cron durante el
+  // prerender de build (proceso de vida corta, sin DB/SMTP reales disponibles).
+  if (import.meta.prerender) return
   // noOverlap: si un tick tarda más de 30s (SMTP lento, muchos pendientes), el siguiente
   // tick no arranca en paralelo — defensa adicional junto al reclamo atómico en
   // dispatchPendingNotifications (que ya evita el reenvío aunque llegaran a solaparse).
