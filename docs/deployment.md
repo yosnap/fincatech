@@ -96,7 +96,11 @@ openssl rand -base64 32
 
 `server/plugins/env-check.ts` valida TODAS las variables obligatorias al arrancar el
 contenedor y falla rápido con un mensaje claro si falta alguna — si el contenedor no
-arranca, revisa los logs del servicio en Easypanel primero.
+arranca, revisa los logs del servicio en Easypanel primero. Las variables opcionales
+(`NAN_BUILDERS_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`) admiten estar
+completamente ausentes O en blanco: Easypanel (y otros PaaS) suelen inyectar un campo
+vacío del formulario como `""` en vez de omitirlo del entorno, y `server/utils/env.ts`
+trata ambos casos igual a propósito.
 
 ## 4. Migraciones
 
