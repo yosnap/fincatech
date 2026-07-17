@@ -77,17 +77,19 @@ MINIO_BUCKET=fincatech-media
 BETTER_AUTH_SECRET=<generar, ver abajo>
 BETTER_AUTH_URL=https://finca.habiteka.app   # debe coincidir EXACTO con el dominio público (sin barra final) — better-auth valida el Origin contra esta URL
 
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=<cuenta>
-SMTP_PASS=<contraseña de aplicación>
-SMTP_FROM="Finca La Unión <cuenta@gmail.com>"
-
 # Opcionales — sin ellas la app arranca igual, con esas funciones desactivadas:
+SMTP_HOST=smtp.gmail.com    # sin SMTP completo, las invitaciones no se envían por email:
+SMTP_PORT=587                # el Admin recibe el enlace en la respuesta para compartirlo a
+SMTP_USER=<cuenta>           # mano, y las notificaciones por email fallan con gracia (se
+SMTP_PASS=<contraseña de aplicación>  # reintentan y acaban marcadas 'failed', sin tumbar nada)
+SMTP_FROM="Finca La Unión <cuenta@gmail.com>"
 NAN_BUILDERS_API_KEY=       # sin esto, el ticket OCR se degrada a entrada manual
 TELEGRAM_BOT_TOKEN=         # sin esto, el bot de Telegram queda desactivado
 TELEGRAM_WEBHOOK_SECRET=
 ```
+
+Recomendado igualmente configurar SMTP real cuanto antes: sin él, invitar a nuevos
+propietarios exige compartir el enlace de invitación a mano cada vez.
 
 Generar `BETTER_AUTH_SECRET` (mínimo 32 caracteres aleatorios):
 ```bash

@@ -109,11 +109,17 @@ async function onDeactivate(member: Member) {
       <UAlert
         v-if="inviteLink"
         class="mt-4"
-        color="success"
+        color="warning"
         variant="soft"
-        title="Invitación creada"
-        :description="inviteLink"
-      />
+        title="Invitación creada, pero no se pudo enviar por email"
+      >
+        <template #description>
+          <p>Copia este enlace y compártelo tú mismo con la persona invitada:</p>
+          <p class="mt-1 break-all font-mono text-xs">
+            {{ inviteLink }}
+          </p>
+        </template>
+      </UAlert>
     </UCard>
 
     <UCard>

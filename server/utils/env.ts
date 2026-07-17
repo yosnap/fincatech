@@ -6,6 +6,7 @@ import { z } from 'zod'
 // rompía el arranque igual que si fuera obligatoria. Convierte '' -> undefined antes de
 // validar, para las 3 vars que son opcionales a propósito.
 const optionalString = () => z.preprocess(v => (v === '' ? undefined : v), z.string().min(1).optional())
+const optionalNumber = () => z.preprocess(v => (v === '' || v === undefined ? undefined : v), z.coerce.number().int().positive().optional())
 
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
@@ -20,11 +21,19 @@ const envSchema = z.object({
   MINIO_BUCKET: z.string().min(1),
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: z.string().url(),
-  SMTP_HOST: z.string().min(1),
-  SMTP_PORT: z.coerce.number().int().positive(),
-  SMTP_USER: z.string().min(1),
-  SMTP_PASS: z.string().min(1),
-  SMTP_FROM: z.string().min(1),
+  // Opcional a propósito (igual que NAN_BUILDERS_API_KEY/TELEGRAM_*): sin SMTP completo,
+  // server/utils/email.ts lanza un error claro y capturable en vez de mandar mail — los dos
+  // sitios que envían email (invite.post.ts, notification-service.ts) ya lo capturan y
+  // degradan con gracia (invite.post.ts devuelve el token para compartir a mano; el
+  // dispatcher de notificaciones marca ese intento 'failed' tras MAX_ATTEMPTS, sin tumbar
+  // el resto de canales/notificaciones). No tiene sentido validar los 5 campos por
+  // separado como "todos o ninguno" aquí — email.ts ya comprueba el conjunto completo antes
+  // de intentar enviar.
+  SMTP_HOST: optionalString(),
+  SMTP_PORT: optionalNumber(),
+  SMTP_USER: optionalString(),
+  SMTP_PASS: optionalString(),
+  SMTP_FROM: optionalString(),
   // Opcional a propósito: si falta, el OCR (Fase 4) se degrada a 503 -> entrada manual
   // en vez de impedir que arranque toda la app (fail-fast solo aplica a lo imprescindible).
   NAN_BUILDERS_API_KEY: optionalString(),
