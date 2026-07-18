@@ -4,13 +4,16 @@ import { authClient } from '~/utils/auth-client'
 const toast = useToast()
 const email = ref('')
 const password = ref('')
+const showPassword = ref(false)
+const rememberMe = ref(true)
 const loading = ref(false)
 
 async function onSubmit() {
   loading.value = true
   const { error } = await authClient.signIn.email({
     email: email.value,
-    password: password.value
+    password: password.value,
+    rememberMe: rememberMe.value
   })
   loading.value = false
   if (error) {
@@ -48,12 +51,30 @@ async function onSubmit() {
         <UFormField label="Contraseña">
           <UInput
             v-model="password"
-            type="password"
+            :type="showPassword ? 'text' : 'password'"
             autocomplete="current-password"
             required
             class="w-full"
-          />
+            :ui="{ trailing: 'pe-1' }"
+          >
+            <template #trailing>
+              <UButton
+                color="neutral"
+                variant="link"
+                size="sm"
+                :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                :aria-label="showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+                :aria-pressed="showPassword"
+                @click="showPassword = !showPassword"
+              />
+            </template>
+          </UInput>
         </UFormField>
+
+        <UCheckbox
+          v-model="rememberMe"
+          label="Mantener sesión iniciada"
+        />
 
         <UButton
           type="submit"

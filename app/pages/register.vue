@@ -3,6 +3,7 @@ const toast = useToast()
 const name = ref('')
 const email = ref('')
 const password = ref('')
+const showPassword = ref(false)
 const loading = ref(false)
 
 async function onSubmit() {
@@ -64,12 +65,25 @@ async function onSubmit() {
         <UFormField label="Contraseña">
           <UInput
             v-model="password"
-            type="password"
+            :type="showPassword ? 'text' : 'password'"
             autocomplete="new-password"
             required
             minlength="8"
             class="w-full"
-          />
+            :ui="{ trailing: 'pe-1' }"
+          >
+            <template #trailing>
+              <UButton
+                color="neutral"
+                variant="link"
+                size="sm"
+                :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                :aria-label="showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+                :aria-pressed="showPassword"
+                @click="showPassword = !showPassword"
+              />
+            </template>
+          </UInput>
         </UFormField>
 
         <UButton
