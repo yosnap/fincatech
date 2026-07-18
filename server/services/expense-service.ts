@@ -275,3 +275,85 @@ export async function deleteExpense(input: DeleteExpenseInput) {
 
   return { expenseId: result.expenseId }
 }
+
+interface UpdateExpenseParticipantsInput {
+  expenseId: string
+  actorId: string
+  participantIds: string[]
+}
+
+// Solo participantes: importe, descripción y tipo quedan fijos (decisión de producto —
+// recalcular el importe con deudas ya generadas es mucho más delicado). Igual que
+// deleteExpense, bloqueado si alguna cuota ya tiene rastro de pago — corrige tickets mal
+// repartidos al crearlos (p. ej. antes de preseleccionar a todos los miembros), nunca
+// reparte de nuevo dinero que ya cambió de manos.
+export async function updateExpenseParticipants(input: UpdateExpenseParticipantsInput) {
+  return db.transaction(async (tx) => {
+    const [expense] = await tx.select().from(expenses).where(eq(expenses.id, input.expenseId)).for('update')
+    if (!expense) {
+      throw createError({ statusCode: 404, statusMessage: 'Gasto no encontrado' })
+    }
+    if (!input.participantIds.includes(expense.createdBy)) {
+      throw createError({ statusCode: 400, statusMessage: 'El pagador debe estar entre los participantes' })
+    }
+
+    // FOR UPDATE sobre todas las deudas — mismo motivo que en deleteExpense: sin este lock,
+    // un markDebtPaid concurrente podría colarse entre el check y el borrado de más abajo.
+    const existingDebts = await tx.select().from(debts).where(eq(debts.expenseId, expense.id)).for('update')
+    const hasPaymentTrace = existingDebts.some(d => d.status !== 'pending')
+    if (hasPaymentTrace) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'No se puede editar: ya hay cuotas pagadas o confirmadas para este gasto'
+      })
+    }
+
+    const previousDebtorIds = new Set(existingDebts.map(d => d.debtorId))
+    const shares = splitExpense(expense.amountCents, input.participantIds)
+    const isBankReceipt = expense.type === 'bank_receipt'
+
+    await tx.delete(debts).where(eq(debts.expenseId, expense.id))
+
+    const debtRows = shares
+      .filter(share => share.userId !== expense.createdBy)
+      .map(share => ({
+        expenseId: expense.id,
+        debtorId: share.userId,
+        creditorId: expense.createdBy,
+        amountCents: share.amountCents,
+        status: (isBankReceipt ? 'confirmed' : 'pending') satisfies DebtStatus,
+        confirmedAt: isBankReceipt ? new Date() : null,
+        confirmedBy: isBankReceipt ? expense.createdBy : null
+      }))
+
+    if (debtRows.length > 0) {
+      await tx.insert(debts).values(debtRows)
+    }
+
+    const newStatus: ExpenseStatus = isBankReceipt || shares.length === 1 ? 'settled' : 'pending'
+    const [updated] = await tx.update(expenses)
+      .set({ participantSnapshot: shares, status: newStatus, updatedAt: new Date() })
+      .where(eq(expenses.id, expense.id))
+      .returning()
+
+    await writeAuditLog({
+      actorId: input.actorId,
+      action: 'expense_participants_updated',
+      entityType: 'expense',
+      entityId: expense.id,
+      metadata: { participantIds: input.participantIds }
+    }, tx)
+
+    // Solo se notifica a quien es deudor nuevo — quien ya lo era no necesita el aviso otra vez.
+    for (const debtRow of debtRows.filter(row => !previousDebtorIds.has(row.debtorId))) {
+      await enqueueNotification({
+        userId: debtRow.debtorId,
+        eventType: 'debt_created',
+        subject: 'Nueva deuda registrada',
+        body: `Tienes una nueva deuda de ${(debtRow.amountCents / 100).toFixed(2)}€ por "${expense.description}".`
+      }, tx)
+    }
+
+    return updated
+  })
+}

@@ -11,6 +11,17 @@ interface Debt {
   status: string
 }
 
+interface Member {
+  id: string
+  name: string
+  role: string
+}
+
+interface ParticipantShare {
+  userId: string
+  amountCents: number
+}
+
 interface ExpenseDetail {
   id: string
   description: string
@@ -23,6 +34,7 @@ interface ExpenseDetail {
   createdBy?: string
   createdByName: string
   createdAt: string
+  participantSnapshot?: ParticipantShare[]
   debts?: Debt[]
 }
 
@@ -40,6 +52,13 @@ const currentUserId = computed(() => session.value.data?.user.id)
 const currentUserRole = computed(() => (session.value.data?.user as { role?: string } | undefined)?.role)
 const canSeeExpenseProof = computed(() => currentUserRole.value === 'admin' || currentUserRole.value === 'owner')
 const canDeleteExpense = computed(() => currentUserRole.value === 'admin')
+// Igual que el borrado: solo se puede tocar el reparto mientras ninguna cuota tenga rastro
+// de pago — evita romper un pago real ya hecho.
+const canEditParticipants = computed(() => {
+  if (currentUserRole.value !== 'admin') return false
+  const debtList = data.value?.expense.debts
+  return !debtList || debtList.every(d => d.status === 'pending')
+})
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Pendiente',
@@ -49,10 +68,6 @@ const STATUS_LABELS: Record<string, string> = {
 
 const busyDebtId = ref<string | null>(null)
 const toast = useToast()
-
-function formatEuros(cents: number) {
-  return (cents / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
-}
 
 async function confirmDebt(debtId: string) {
   busyDebtId.value = debtId
@@ -110,6 +125,47 @@ async function onDeleteExpense() {
     deleting.value = false
   }
 }
+
+const editingParticipants = ref(false)
+const savingParticipants = ref(false)
+const selectedParticipantIds = ref<string[]>([])
+const membersData = ref<{ members: Member[] } | null>(null)
+
+async function openEditParticipants() {
+  if (!membersData.value) {
+    membersData.value = await $fetch<{ members: Member[] }>('/api/expenses/participants')
+  }
+  selectedParticipantIds.value = (data.value?.expense.participantSnapshot ?? []).map(s => s.userId)
+  editingParticipants.value = true
+}
+
+function toggleParticipant(memberId: string, checked: boolean) {
+  selectedParticipantIds.value = checked
+    ? [...selectedParticipantIds.value, memberId]
+    : selectedParticipantIds.value.filter(id => id !== memberId)
+}
+
+async function saveParticipants() {
+  if (selectedParticipantIds.value.length === 0) {
+    toast.add({ title: 'Selecciona al menos un participante', color: 'warning' })
+    return
+  }
+  savingParticipants.value = true
+  try {
+    await $fetch(`/api/expenses/${route.params.id}/participants`, {
+      method: 'PATCH',
+      body: { participantIds: selectedParticipantIds.value }
+    })
+    editingParticipants.value = false
+    await refresh()
+    toast.add({ title: 'Participantes actualizados', color: 'success' })
+  } catch (error) {
+    const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
+    toast.add({ title: statusMessage ?? 'No se pudieron actualizar los participantes', color: 'error' })
+  } finally {
+    savingParticipants.value = false
+  }
+}
 </script>
 
 <template>
@@ -127,18 +183,62 @@ async function onDeleteExpense() {
       >
         Volver
       </UButton>
-      <UButton
-        v-if="canDeleteExpense"
-        icon="i-lucide-trash-2"
-        variant="ghost"
-        color="error"
-        size="sm"
-        :loading="deleting"
-        @click="onDeleteExpense"
-      >
-        Eliminar gasto
-      </UButton>
+      <div class="flex gap-2">
+        <UButton
+          v-if="canEditParticipants && !editingParticipants"
+          icon="i-lucide-users"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          @click="openEditParticipants"
+        >
+          Editar participantes
+        </UButton>
+        <UButton
+          v-if="canDeleteExpense"
+          icon="i-lucide-trash-2"
+          variant="ghost"
+          color="error"
+          size="sm"
+          :loading="deleting"
+          @click="onDeleteExpense"
+        >
+          Eliminar gasto
+        </UButton>
+      </div>
     </div>
+
+    <UCard v-if="editingParticipants">
+      <template #header>
+        <h2 class="text-lg font-semibold">
+          Editar participantes
+        </h2>
+      </template>
+      <div class="flex flex-col gap-2">
+        <UCheckbox
+          v-for="member in membersData?.members ?? []"
+          :key="member.id"
+          :model-value="selectedParticipantIds.includes(member.id)"
+          :label="member.name"
+          @update:model-value="(checked) => toggleParticipant(member.id, checked === true)"
+        />
+      </div>
+      <div class="mt-4 flex gap-2">
+        <UButton
+          :loading="savingParticipants"
+          @click="saveParticipants"
+        >
+          Guardar
+        </UButton>
+        <UButton
+          variant="soft"
+          color="neutral"
+          @click="editingParticipants = false"
+        >
+          Cancelar
+        </UButton>
+      </div>
+    </UCard>
     <UCard>
       <template #header>
         <h1 class="text-lg font-semibold">
