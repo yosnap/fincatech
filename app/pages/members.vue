@@ -11,13 +11,29 @@ interface Member {
   createdAt: string
 }
 
+interface Invitation {
+  id: string
+  email: string
+  role: string
+  expiresAt: string
+  expired: boolean
+  createdAt: string
+}
+
 const ROLE_OPTIONS = [
   { label: 'Administrador', value: 'admin' },
   { label: 'Propietario', value: 'owner' },
   { label: 'Invitado', value: 'guest' }
 ]
 
-const { data, refresh } = await useFetch<{ members: Member[] }>('/api/members')
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Administrador',
+  owner: 'Propietario',
+  guest: 'Invitado'
+}
+
+const { data, refresh } = await useFetch<{ members: Member[], invitations: Invitation[] }>('/api/members')
+const toast = useToast()
 
 // Auto-registrados pendientes de aprobación primero, para que el Admin los vea sin buscar.
 const sortedMembers = computed(() => {
@@ -61,6 +77,23 @@ async function onRoleChange(member: Member, role: string) {
 async function onDeactivate(member: Member) {
   await $fetch(`/api/members/${member.id}/deactivate`, { method: 'POST' })
   await refresh()
+}
+
+async function onCancelInvitation(invitation: Invitation) {
+  const confirmed = await useConfirmDialog()({
+    title: 'Cancelar invitación',
+    description: `Se cancelará la invitación a ${invitation.email}. No se puede deshacer.`,
+    confirmLabel: 'Cancelar invitación',
+    color: 'error'
+  })
+  if (!confirmed) return
+  try {
+    await $fetch(`/api/members/invitations/${invitation.id}/cancel`, { method: 'POST' })
+    await refresh()
+    toast.add({ title: 'Invitación cancelada', color: 'success' })
+  } catch {
+    toast.add({ title: 'No se pudo cancelar la invitación', color: 'error' })
+  }
 }
 </script>
 
@@ -127,6 +160,54 @@ async function onDeactivate(member: Member) {
           </p>
         </template>
       </UAlert>
+    </UCard>
+
+    <UCard v-if="data?.invitations?.length">
+      <template #header>
+        <h2 class="text-lg font-semibold">
+          Invitaciones pendientes
+        </h2>
+      </template>
+
+      <div class="flex flex-col divide-y divide-default">
+        <div
+          v-for="invitation in data.invitations"
+          :key="invitation.id"
+          class="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div>
+            <p class="font-medium">
+              {{ invitation.email }}
+              <UBadge
+                variant="soft"
+                class="ml-2"
+              >
+                {{ ROLE_LABELS[invitation.role] ?? invitation.role }}
+              </UBadge>
+              <UBadge
+                v-if="invitation.expired"
+                color="error"
+                variant="soft"
+                class="ml-2"
+              >
+                Caducada
+              </UBadge>
+            </p>
+            <p class="text-sm text-muted">
+              {{ invitation.expired ? 'Caducó el' : 'Caduca el' }} {{ new Date(invitation.expiresAt).toLocaleString('es-ES') }}
+            </p>
+          </div>
+
+          <UButton
+            color="error"
+            variant="soft"
+            size="sm"
+            @click="onCancelInvitation(invitation)"
+          >
+            Cancelar
+          </UButton>
+        </div>
+      </div>
     </UCard>
 
     <UCard>
