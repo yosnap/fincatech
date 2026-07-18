@@ -22,6 +22,10 @@ interface ParticipantShare {
   amountCents: number
 }
 
+interface ParticipantWithName extends ParticipantShare {
+  name: string
+}
+
 interface ExpenseDetail {
   id: string
   description: string
@@ -35,6 +39,7 @@ interface ExpenseDetail {
   createdByName: string
   createdAt: string
   participantSnapshot?: ParticipantShare[]
+  participants?: ParticipantWithName[]
   debts?: Debt[]
 }
 
@@ -269,6 +274,38 @@ async function saveParticipants() {
       >
         Ver justificante
       </UButton>
+    </UCard>
+
+    <UCard v-if="data.expense.participants">
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon
+            name="i-lucide-users"
+            class="size-5 text-primary"
+          />
+          <h2 class="text-lg font-semibold">
+            Participantes ({{ data.expense.participants.length }})
+          </h2>
+        </div>
+      </template>
+      <div class="flex flex-col divide-y divide-default">
+        <div
+          v-for="participant in data.expense.participants"
+          :key="participant.userId"
+          class="flex items-center justify-between py-2 text-sm"
+        >
+          <p>
+            {{ participant.name }}
+            <span
+              v-if="participant.userId === data.expense.createdBy"
+              class="text-muted"
+            >(pagador)</span>
+          </p>
+          <p class="font-medium">
+            {{ formatEuros(participant.amountCents) }}
+          </p>
+        </div>
+      </div>
     </UCard>
 
     <UCard v-if="data.expense.debts">

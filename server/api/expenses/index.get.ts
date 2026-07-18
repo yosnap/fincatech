@@ -12,6 +12,12 @@ export default defineEventHandler(async (event) => {
   const rows = await db.query.expenses.findMany({ orderBy: [desc(expenses.createdAt)] })
   const nameMap = await getUserNameMap(rows.map(e => e.createdBy))
 
+  // participantSnapshot es jsonb sin tipo declarado en el esquema — solo se usa aquí para
+  // contar cuántos participan, nunca se expone el desglose a quien no puede verlo.
+  function participantCount(snapshot: unknown): number {
+    return Array.isArray(snapshot) ? snapshot.length : 0
+  }
+
   if (!canSeeIndividualDebt(user)) {
     return {
       expenses: rows.map(e => ({
@@ -22,7 +28,8 @@ export default defineEventHandler(async (event) => {
         hasProof: e.hasProof,
         status: e.status,
         createdByName: nameMap.get(e.createdBy) ?? e.createdBy,
-        createdAt: e.createdAt
+        createdAt: e.createdAt,
+        participantCount: participantCount(e.participantSnapshot)
       }))
     }
   }
@@ -39,6 +46,7 @@ export default defineEventHandler(async (event) => {
       createdBy: e.createdBy,
       createdByName: nameMap.get(e.createdBy) ?? e.createdBy,
       createdAt: e.createdAt,
+      participantCount: participantCount(e.participantSnapshot),
       debts: allDebts
         .filter(d => d.expenseId === e.id)
         .map(d => ({ id: d.id, debtorId: d.debtorId, creditorId: d.creditorId, amountCents: d.amountCents, status: d.status }))

@@ -21,6 +21,7 @@ interface ExpenseItem {
   createdBy?: string
   createdByName: string
   createdAt: string
+  participantCount: number
   debts?: DebtSummary[]
 }
 
@@ -37,10 +38,6 @@ const canCreate = computed(() => {
   const role = (session.value.data?.user as { role?: string } | undefined)?.role
   return role === 'admin' || role === 'owner'
 })
-
-function formatEuros(cents: number) {
-  return (cents / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
-}
 </script>
 
 <template>
@@ -72,8 +69,15 @@ function formatEuros(cents: number) {
             <p class="font-medium">
               {{ expense.description }}
             </p>
-            <p class="text-sm text-muted">
+            <p class="flex items-center gap-1 text-sm text-muted">
               {{ new Date(expense.createdAt).toLocaleDateString('es-ES') }} · {{ expense.createdByName }}
+              <span class="ml-1 inline-flex items-center gap-0.5">
+                <UIcon
+                  name="i-lucide-users"
+                  class="size-3.5"
+                />
+                {{ expense.participantCount }}
+              </span>
             </p>
           </div>
           <div class="text-right">

@@ -16,9 +16,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Gasto no encontrado' })
   }
 
-  const nameMap = await getUserNameMap([expense.createdBy])
-  const createdByName = nameMap.get(expense.createdBy) ?? expense.createdBy
-
   // hasProof es solo lo que la persona marcó al crear el gasto (checkbox) — algunos gastos
   // antiguos lo tienen a true sin archivo real subido. hasStoredProof refleja si existe de
   // verdad un justificante en payment_proofs, que es lo que decide si mostrar "Ver justificante".
@@ -29,10 +26,24 @@ export default defineEventHandler(async (event) => {
 
   if (!canSeeIndividualDebt(user)) {
     // participantSnapshot contiene el desglose por persona — nunca se expone al Invitado.
+    const nameMap = await getUserNameMap([expense.createdBy])
     const { participantSnapshot: _participantSnapshot, ...aggregate } = expense
-    return { expense: { ...aggregate, createdByName, hasStoredProof } }
+    return { expense: { ...aggregate, createdByName: nameMap.get(expense.createdBy) ?? expense.createdBy, hasStoredProof } }
   }
 
+  const participantSnapshot = Array.isArray(expense.participantSnapshot)
+    ? expense.participantSnapshot as { userId: string, amountCents: number }[]
+    : []
+  const nameMap = await getUserNameMap([expense.createdBy, ...participantSnapshot.map(p => p.userId)])
+  const createdByName = nameMap.get(expense.createdBy) ?? expense.createdBy
+  // Lista de participantes con nombre ya resuelto — así el detalle del gasto muestra quién
+  // participa sin tener que abrir "Editar participantes" para averiguarlo.
+  const participants = participantSnapshot.map(p => ({
+    userId: p.userId,
+    name: nameMap.get(p.userId) ?? p.userId,
+    amountCents: p.amountCents
+  }))
+
   const expenseDebts = await db.query.debts.findMany({ where: eq(debts.expenseId, id) })
-  return { expense: { ...expense, createdByName, hasStoredProof, debts: expenseDebts } }
+  return { expense: { ...expense, createdByName, hasStoredProof, participants, debts: expenseDebts } }
 })
