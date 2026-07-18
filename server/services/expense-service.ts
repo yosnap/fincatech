@@ -108,7 +108,10 @@ export async function createExpense(input: CreateExpenseInput) {
 interface MarkDebtPaidInput {
   debtId: string
   actorId: string
-  proof: { objectName: string, contentType: string }
+  // Opcional: si no se sube justificante, la cuota igualmente pasa a "pendiente de
+  // confirmación" — el acreedor o el Admin siguen teniendo que confirmar que la recibieron,
+  // así que declarar el pago sin foto no basta por sí solo para darlo por definitivo.
+  proof?: { objectName: string, contentType: string }
 }
 
 export async function markDebtPaid(input: MarkDebtPaidInput) {
@@ -126,13 +129,15 @@ export async function markDebtPaid(input: MarkDebtPaidInput) {
       throw createError({ statusCode: 400, statusMessage: 'La cuota no está pendiente de pago' })
     }
 
-    await tx.insert(paymentProofs).values({
-      objectName: input.proof.objectName,
-      contentType: input.proof.contentType,
-      uploadedBy: input.actorId,
-      entityType: 'debt',
-      entityId: debt.id
-    })
+    if (input.proof) {
+      await tx.insert(paymentProofs).values({
+        objectName: input.proof.objectName,
+        contentType: input.proof.contentType,
+        uploadedBy: input.actorId,
+        entityType: 'debt',
+        entityId: debt.id
+      })
+    }
 
     const [updated] = await tx.update(debts)
       .set({ status: 'pending_confirmation', paidAt: new Date(), updatedAt: new Date() })
@@ -221,16 +226,21 @@ export async function confirmDebtReceipt(input: ConfirmDebtReceiptInput) {
 interface DeleteExpenseInput {
   expenseId: string
   actorId: string
+  actorRole: string
 }
 
 // Borrado duro solo si ninguna cuota tiene rastro de pago (decisión de producto: una vez
 // que un vecino subió comprobante o el Admin confirmó recepción, el gasto ya no se puede
 // eliminar sin perder rastro de dinero que cambió de manos — hay que dejarlo como está).
+// Admin elimina cualquier gasto; Propietario solo los que él mismo dio de alta.
 export async function deleteExpense(input: DeleteExpenseInput) {
   const result = await db.transaction(async (tx) => {
     const [expense] = await tx.select().from(expenses).where(eq(expenses.id, input.expenseId)).for('update')
     if (!expense) {
       throw createError({ statusCode: 404, statusMessage: 'Gasto no encontrado' })
+    }
+    if (input.actorRole !== 'admin' && expense.createdBy !== input.actorId) {
+      throw createError({ statusCode: 403, statusMessage: 'Solo puedes eliminar los gastos que tú diste de alta' })
     }
 
     // FOR UPDATE sobre TODAS las deudas (no solo las ya no-pending): sin este lock, un
@@ -345,6 +355,92 @@ export async function updateExpenseParticipants(input: UpdateExpenseParticipants
     }, tx)
 
     // Solo se notifica a quien es deudor nuevo — quien ya lo era no necesita el aviso otra vez.
+    for (const debtRow of debtRows.filter(row => !previousDebtorIds.has(row.debtorId))) {
+      await enqueueNotification({
+        userId: debtRow.debtorId,
+        eventType: 'debt_created',
+        subject: 'Nueva deuda registrada',
+        body: `Tienes una nueva deuda de ${(debtRow.amountCents / 100).toFixed(2)}€ por "${expense.description}".`
+      }, tx)
+    }
+
+    return updated
+  })
+}
+
+interface ReassignExpenseCreatorInput {
+  expenseId: string
+  actorId: string
+  newCreatedBy: string
+}
+
+// Solo Admin corrige quién figura como pagador (p. ej. un ticket asignado a la persona
+// equivocada al darlo de alta). El nuevo pagador se añade a los participantes si no lo
+// era ya — el pagador siempre debe participar. Mismo bloqueo por rastro de pago que
+// updateExpenseParticipants: no tiene sentido reasignar el cobro de dinero que ya se pagó
+// a la persona anterior.
+export async function reassignExpenseCreator(input: ReassignExpenseCreatorInput) {
+  return db.transaction(async (tx) => {
+    const [expense] = await tx.select().from(expenses).where(eq(expenses.id, input.expenseId)).for('update')
+    if (!expense) {
+      throw createError({ statusCode: 404, statusMessage: 'Gasto no encontrado' })
+    }
+    if (expense.createdBy === input.newCreatedBy) {
+      return expense
+    }
+
+    const existingDebts = await tx.select().from(debts).where(eq(debts.expenseId, expense.id)).for('update')
+    const hasPaymentTrace = existingDebts.some(d => d.status !== 'pending')
+    if (hasPaymentTrace) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'No se puede reasignar: ya hay cuotas pagadas o confirmadas para este gasto'
+      })
+    }
+
+    const previousDebtorIds = new Set(existingDebts.map(d => d.debtorId))
+    const previousParticipantIds = Array.isArray(expense.participantSnapshot)
+      ? (expense.participantSnapshot as { userId: string }[]).map(p => p.userId)
+      : []
+    const participantIds = previousParticipantIds.includes(input.newCreatedBy)
+      ? previousParticipantIds
+      : [...previousParticipantIds, input.newCreatedBy]
+
+    const shares = splitExpense(expense.amountCents, participantIds)
+    const isBankReceipt = expense.type === 'bank_receipt'
+
+    await tx.delete(debts).where(eq(debts.expenseId, expense.id))
+
+    const debtRows = shares
+      .filter(share => share.userId !== input.newCreatedBy)
+      .map(share => ({
+        expenseId: expense.id,
+        debtorId: share.userId,
+        creditorId: input.newCreatedBy,
+        amountCents: share.amountCents,
+        status: (isBankReceipt ? 'confirmed' : 'pending') satisfies DebtStatus,
+        confirmedAt: isBankReceipt ? new Date() : null,
+        confirmedBy: isBankReceipt ? input.newCreatedBy : null
+      }))
+
+    if (debtRows.length > 0) {
+      await tx.insert(debts).values(debtRows)
+    }
+
+    const newStatus: ExpenseStatus = isBankReceipt || shares.length === 1 ? 'settled' : 'pending'
+    const [updated] = await tx.update(expenses)
+      .set({ createdBy: input.newCreatedBy, participantSnapshot: shares, status: newStatus, updatedAt: new Date() })
+      .where(eq(expenses.id, expense.id))
+      .returning()
+
+    await writeAuditLog({
+      actorId: input.actorId,
+      action: 'expense_creator_reassigned',
+      entityType: 'expense',
+      entityId: expense.id,
+      metadata: { previousCreatedBy: expense.createdBy, newCreatedBy: input.newCreatedBy }
+    }, tx)
+
     for (const debtRow of debtRows.filter(row => !previousDebtorIds.has(row.debtorId))) {
       await enqueueNotification({
         userId: debtRow.debtorId,

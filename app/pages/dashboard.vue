@@ -88,6 +88,27 @@ async function confirmDebt(debtId: string) {
     busyId.value = null
   }
 }
+
+async function markPaidWithoutProof(debtId: string) {
+  const confirmed = await useConfirmDialog()({
+    title: 'Marcar como pagado sin comprobante',
+    description: 'Quedará pendiente de que la otra persona (o un Admin) confirme que lo recibió.',
+    confirmLabel: 'Marcar como pagado',
+    color: 'primary'
+  })
+  if (!confirmed) return
+
+  busyId.value = debtId
+  try {
+    await $fetch(`/api/debts/${debtId}/mark-paid`, { method: 'POST' })
+    await refresh()
+    toast.add({ title: 'Marcado como pagado, pendiente de confirmación', color: 'success' })
+  } catch {
+    toast.add({ title: 'No se pudo marcar como pagado', color: 'error' })
+  } finally {
+    busyId.value = null
+  }
+}
 </script>
 
 <template>
@@ -189,16 +210,26 @@ async function confirmDebt(debtId: string) {
           <p class="text-muted">
             A {{ debt.counterpartyName }} · {{ STATUS_LABELS[debt.status] ?? debt.status }}
           </p>
-          <MediaPhotoUpload
-            v-if="debt.status === 'pending'"
-            :upload-url="`/api/debts/${debt.id}/mark-paid`"
-            field-name="proof"
-            accept="image/jpeg,image/png,application/pdf"
-            label="Adjunta el comprobante"
-            description="JPEG, PNG o PDF, máx. 10MB — al subirlo se marca como pagada"
-            :compress="false"
-            @uploaded="refresh"
-          />
+          <template v-if="debt.status === 'pending'">
+            <MediaPhotoUpload
+              :upload-url="`/api/debts/${debt.id}/mark-paid`"
+              field-name="proof"
+              accept="image/jpeg,image/png,application/pdf"
+              label="Adjunta el comprobante"
+              description="JPEG, PNG o PDF, máx. 10MB — al subirlo se marca como pagada"
+              :compress="false"
+              @uploaded="refresh"
+            />
+            <UButton
+              size="xs"
+              variant="link"
+              class="self-start px-0"
+              :loading="busyId === debt.id"
+              @click="markPaidWithoutProof(debt.id)"
+            >
+              O marca como pagado sin comprobante
+            </UButton>
+          </template>
         </div>
         <p
           v-if="!data.pendingAsDebtor.length"
