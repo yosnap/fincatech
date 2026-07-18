@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { authClient } from '~/utils/auth-client'
-
 definePageMeta({ middleware: ['auth'] })
 
 interface Member {
@@ -18,7 +16,6 @@ interface Extraction {
   confidence: number
 }
 
-const session = authClient.useSession()
 const { data: membersData } = await useFetch<{ members: Member[] }>('/api/expenses/participants')
 
 const toast = useToast()
@@ -32,15 +29,9 @@ const description = ref('')
 const amount = ref('')
 const tax = ref('')
 const confidence = ref(0)
-const selectedIds = ref<string[]>([])
-
-watchEffect(() => {
-  const currentId = session.value.data?.user.id
-  const isMember = (membersData.value?.members ?? []).some(m => m.id === currentId)
-  if (currentId && isMember && !selectedIds.value.includes(currentId)) {
-    selectedIds.value = [...selectedIds.value, currentId]
-  }
-})
+// Todos los miembros activos preseleccionados por defecto (un gasto normalmente se reparte
+// entre todos) — el admin desmarca a quien no corresponda en vez de marcar uno a uno.
+const selectedIds = ref<string[]>((membersData.value?.members ?? []).map(m => m.id))
 
 function buildDescription(extraction: Extraction): string {
   const parts = [extraction.vendor, extraction.concept].filter(Boolean)

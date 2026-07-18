@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { authClient } from '~/utils/auth-client'
-
 interface Member {
   id: string
   name: string
@@ -9,7 +7,6 @@ interface Member {
 
 const emit = defineEmits<{ created: [] }>()
 
-const session = authClient.useSession()
 const { data: membersData } = await useFetch<{ members: Member[] }>('/api/expenses/participants')
 
 const TYPE_OPTIONS = [
@@ -22,17 +19,11 @@ const description = ref('')
 const type = ref<'manual' | 'bank_receipt'>('manual')
 const hasProof = ref(true)
 const proofFile = ref<File | null>(null)
-const selectedIds = ref<string[]>([])
+// Todos los miembros activos preseleccionados por defecto (un gasto normalmente se reparte
+// entre todos) — el admin desmarca a quien no corresponda en vez de marcar uno a uno.
+const selectedIds = ref<string[]>((membersData.value?.members ?? []).map(m => m.id))
 const submitting = ref(false)
 const toast = useToast()
-
-watchEffect(() => {
-  const currentId = session.value.data?.user.id
-  const isMember = (membersData.value?.members ?? []).some(m => m.id === currentId)
-  if (currentId && isMember && !selectedIds.value.includes(currentId)) {
-    selectedIds.value = [...selectedIds.value, currentId]
-  }
-})
 
 function toggleParticipant(memberId: string, checked: boolean) {
   selectedIds.value = checked
