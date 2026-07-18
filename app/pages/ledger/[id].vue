@@ -18,8 +18,10 @@ interface ExpenseDetail {
   taxCents: number | null
   type: string
   hasProof: boolean
+  hasStoredProof: boolean
   status: string
   createdBy?: string
+  createdByName: string
   createdAt: string
   debts?: Debt[]
 }
@@ -36,6 +38,8 @@ const { data, refresh } = await useFetch<{ expense: ExpenseDetail }>(`/api/expen
 
 const currentUserId = computed(() => session.value.data?.user.id)
 const currentUserRole = computed(() => (session.value.data?.user as { role?: string } | undefined)?.role)
+const canSeeExpenseProof = computed(() => currentUserRole.value === 'admin' || currentUserRole.value === 'owner')
+const canDeleteExpense = computed(() => currentUserRole.value === 'admin')
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Pendiente',
@@ -67,6 +71,45 @@ async function viewProof(debtId: string) {
   const result = await $fetch<{ url: string }>(`/api/debts/${debtId}/proof`)
   window.open(result.url, '_blank')
 }
+
+const viewingExpenseProof = ref(false)
+
+async function viewExpenseProof() {
+  viewingExpenseProof.value = true
+  try {
+    const result = await $fetch<{ url: string }>(`/api/expenses/${route.params.id}/proof`)
+    window.open(result.url, '_blank')
+  } catch {
+    toast.add({ title: 'Este gasto no tiene justificante subido', color: 'warning' })
+  } finally {
+    viewingExpenseProof.value = false
+  }
+}
+
+const deleting = ref(false)
+
+async function onDeleteExpense() {
+  const confirmed = await useConfirmDialog()({
+    title: 'Eliminar gasto',
+    description: 'No se puede deshacer. Solo es posible si ninguna cuota tiene pagos registrados.',
+    confirmLabel: 'Eliminar',
+    color: 'error'
+  })
+  if (!confirmed) return
+
+  deleting.value = true
+  try {
+    const deleteUrl: string = `/api/expenses/${route.params.id}`
+    await $fetch(deleteUrl, { method: 'DELETE' })
+    toast.add({ title: 'Gasto eliminado', color: 'success' })
+    await navigateTo('/ledger')
+  } catch (error) {
+    const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
+    toast.add({ title: statusMessage ?? 'No se pudo eliminar el gasto', color: 'error' })
+  } finally {
+    deleting.value = false
+  }
+}
 </script>
 
 <template>
@@ -74,16 +117,28 @@ async function viewProof(debtId: string) {
     v-if="data"
     class="mx-auto flex max-w-2xl flex-col gap-6 py-10"
   >
-    <UButton
-      icon="i-lucide-arrow-left"
-      variant="ghost"
-      color="neutral"
-      size="sm"
-      class="self-start"
-      to="/ledger"
-    >
-      Volver
-    </UButton>
+    <div class="flex items-center justify-between">
+      <UButton
+        icon="i-lucide-arrow-left"
+        variant="ghost"
+        color="neutral"
+        size="sm"
+        to="/ledger"
+      >
+        Volver
+      </UButton>
+      <UButton
+        v-if="canDeleteExpense"
+        icon="i-lucide-trash-2"
+        variant="ghost"
+        color="error"
+        size="sm"
+        :loading="deleting"
+        @click="onDeleteExpense"
+      >
+        Eliminar gasto
+      </UButton>
+    </div>
     <UCard>
       <template #header>
         <h1 class="text-lg font-semibold">
@@ -101,8 +156,19 @@ async function viewProof(debtId: string) {
       </p>
       <p class="text-sm text-muted">
         {{ TYPE_LABELS[data.expense.type] ?? data.expense.type }} ·
-        {{ data.expense.hasProof ? 'Con comprobante' : 'Sin comprobante' }}
+        {{ data.expense.hasProof ? 'Con comprobante' : 'Sin comprobante' }} ·
+        dado de alta por {{ data.expense.createdByName }}
       </p>
+      <UButton
+        v-if="canSeeExpenseProof && data.expense.hasStoredProof"
+        size="xs"
+        variant="link"
+        class="self-start px-0"
+        :loading="viewingExpenseProof"
+        @click="viewExpenseProof"
+      >
+        Ver justificante
+      </UButton>
     </UCard>
 
     <UCard v-if="data.expense.debts">

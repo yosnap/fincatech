@@ -4,6 +4,7 @@ import { debts, expenses, paymentProofs } from '../db/schema'
 import { writeAuditLog } from '../utils/audit'
 import { splitExpense } from './debt-splitter'
 import { enqueueNotification } from './notification-service'
+import { deleteFile } from './storage'
 
 // 'derrama' se crea exclusivamente vía assessment-service.executeApprovedProposal, nunca
 // a través de createExpense (que asume un pagador único excluido de las debts).
@@ -215,4 +216,62 @@ export async function confirmDebtReceipt(input: ConfirmDebtReceiptInput) {
 
     return updated
   })
+}
+
+interface DeleteExpenseInput {
+  expenseId: string
+  actorId: string
+}
+
+// Borrado duro solo si ninguna cuota tiene rastro de pago (decisión de producto: una vez
+// que un vecino subió comprobante o el Admin confirmó recepción, el gasto ya no se puede
+// eliminar sin perder rastro de dinero que cambió de manos — hay que dejarlo como está).
+export async function deleteExpense(input: DeleteExpenseInput) {
+  const result = await db.transaction(async (tx) => {
+    const [expense] = await tx.select().from(expenses).where(eq(expenses.id, input.expenseId)).for('update')
+    if (!expense) {
+      throw createError({ statusCode: 404, statusMessage: 'Gasto no encontrado' })
+    }
+
+    // FOR UPDATE sobre TODAS las deudas (no solo las ya no-pending): sin este lock, un
+    // markDebtPaid concurrente podría colarse entre este check y el borrado de más abajo,
+    // destruyendo un comprobante de pago recién subido (mismo riesgo que en
+    // proposals/[id].delete.ts al borrar la derrama de una propuesta aprobada).
+    const expenseDebts = await tx.select({ status: debts.status }).from(debts).where(eq(debts.expenseId, expense.id)).for('update')
+    const hasPaymentTrace = expenseDebts.some(d => d.status !== 'pending')
+    if (hasPaymentTrace) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'No se puede eliminar: ya hay cuotas pagadas o confirmadas para este gasto'
+      })
+    }
+
+    const proofs = await tx.select().from(paymentProofs)
+      .where(and(eq(paymentProofs.entityType, 'expense'), eq(paymentProofs.entityId, expense.id)))
+
+    // debts se borra en cascada a nivel de esquema (onDelete: 'cascade'); paymentProofs es
+    // polimórfico sin FK, hay que limpiarlo a mano aquí junto con el archivo en MinIO.
+    if (proofs.length > 0) {
+      await tx.delete(paymentProofs).where(and(eq(paymentProofs.entityType, 'expense'), eq(paymentProofs.entityId, expense.id)))
+    }
+    await tx.delete(expenses).where(eq(expenses.id, expense.id))
+
+    // El registro de auditoría sobrevive al borrado del gasto (misma tx) — es la única
+    // forma de reconstruir después qué se eliminó y quién lo hizo.
+    await writeAuditLog({
+      actorId: input.actorId,
+      action: 'expense_deleted',
+      entityType: 'expense',
+      entityId: expense.id,
+      metadata: { description: expense.description, amountCents: expense.amountCents }
+    }, tx)
+
+    return { expenseId: expense.id, proofObjectNames: proofs.map(p => p.objectName) }
+  })
+
+  for (const objectName of result.proofObjectNames) {
+    await deleteFile(objectName).catch(() => null)
+  }
+
+  return { expenseId: result.expenseId }
 }

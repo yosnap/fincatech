@@ -21,6 +21,7 @@ const amount = ref('')
 const description = ref('')
 const type = ref<'manual' | 'bank_receipt'>('manual')
 const hasProof = ref(true)
+const proofFile = ref<File | null>(null)
 const selectedIds = ref<string[]>([])
 const submitting = ref(false)
 const toast = useToast()
@@ -49,21 +50,25 @@ async function onSubmit() {
     toast.add({ title: 'Selecciona al menos un participante', color: 'warning' })
     return
   }
+  if (hasProof.value && !proofFile.value) {
+    toast.add({ title: 'Sube el justificante o desmarca "Tengo comprobante"', color: 'warning' })
+    return
+  }
 
   submitting.value = true
   try {
-    await $fetch('/api/expenses', {
-      method: 'POST',
-      body: {
-        amountCents,
-        description: description.value,
-        type: type.value,
-        participantIds: selectedIds.value,
-        hasProof: hasProof.value
-      }
-    })
+    const formData = new FormData()
+    formData.append('amountCents', String(amountCents))
+    formData.append('description', description.value)
+    formData.append('type', type.value)
+    formData.append('participantIds', JSON.stringify(selectedIds.value))
+    formData.append('hasProof', String(hasProof.value))
+    if (proofFile.value) formData.append('proof', proofFile.value)
+
+    await $fetch('/api/expenses', { method: 'POST', body: formData })
     amount.value = ''
     description.value = ''
+    proofFile.value = null
     emit('created')
     toast.add({ title: 'Gasto creado', color: 'success' })
   } catch {
@@ -116,6 +121,14 @@ async function onSubmit() {
       <UCheckbox
         v-model="hasProof"
         label="Tengo comprobante del ticket"
+      />
+
+      <FilePicker
+        v-if="hasProof"
+        v-model="proofFile"
+        accept="image/jpeg,image/png,application/pdf"
+        label="Sube la foto o PDF del ticket"
+        description="JPEG, PNG o PDF, máx. 10MB"
       />
 
       <UFormField label="Participantes (se reparte el gasto entre ellos)">

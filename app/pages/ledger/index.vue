@@ -19,6 +19,7 @@ interface ExpenseItem {
   hasProof: boolean
   status: string
   createdBy?: string
+  createdByName: string
   createdAt: string
   debts?: DebtSummary[]
 }
@@ -72,7 +73,7 @@ function formatEuros(cents: number) {
               {{ expense.description }}
             </p>
             <p class="text-sm text-muted">
-              {{ new Date(expense.createdAt).toLocaleDateString('es-ES') }}
+              {{ new Date(expense.createdAt).toLocaleDateString('es-ES') }} · {{ expense.createdByName }}
             </p>
           </div>
           <div class="text-right">
