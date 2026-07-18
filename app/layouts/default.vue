@@ -19,6 +19,7 @@ const navLinks = computed<NavigationMenuItem[]>(() => {
     children: [
       { label: 'Libro contable', icon: 'i-lucide-book-open', to: '/ledger' },
       { label: 'Central de gastos', icon: 'i-lucide-chart-pie', to: '/dashboard' },
+      { label: 'Estadísticas', icon: 'i-lucide-bar-chart-3', to: '/estadisticas' },
       { label: 'Exportar', icon: 'i-lucide-download', to: '/export' }
     ]
   })

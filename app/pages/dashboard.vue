@@ -35,9 +35,14 @@ const PERIODS = [
 ]
 const period = ref<'week' | 'month' | 'all'>('month')
 
-function formatEuros(cents: number) {
-  return (cents / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
-}
+// Clases completas y literales a propósito (no interpolación con `${}`): Tailwind detecta
+// utilidades escaneando el texto fuente tal cual, una clase construida dinámicamente en
+// runtime no aparece en el CSS generado.
+const PERIOD_CARDS = [
+  { key: 'monthCents', label: 'Este mes', icon: 'i-lucide-calendar', textClass: 'text-primary', ringClass: 'ring-primary/25' },
+  { key: 'quarterCents', label: 'Este trimestre', icon: 'i-lucide-calendar-range', textClass: 'text-info', ringClass: 'ring-info/25' },
+  { key: 'allTimeCents', label: 'Histórico total', icon: 'i-lucide-history', textClass: 'text-warning', ringClass: 'ring-warning/25' }
+] as const
 
 function periodStart(): Date {
   const now = new Date()
@@ -94,10 +99,44 @@ async function confirmDebt(debtId: string) {
       Central de gastos
     </h1>
 
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <UCard
+        v-for="card in PERIOD_CARDS"
+        :key="card.key"
+        :class="card.ringClass"
+      >
+        <div class="flex items-center gap-2">
+          <UIcon
+            :name="card.icon"
+            class="size-4"
+            :class="card.textClass"
+          />
+          <p class="text-sm font-semibold text-highlighted">
+            {{ card.label }}
+          </p>
+        </div>
+        <p
+          class="mt-1 text-2xl font-bold"
+          :class="card.textClass"
+        >
+          {{ formatEuros(data.aggregateTotals[card.key]) }}
+        </p>
+        <p class="text-xs text-muted">
+          gasto total comunidad
+        </p>
+      </UCard>
+    </div>
+
     <UCard>
-      <p class="text-sm text-muted">
-        Tu saldo (lo que te deben menos lo que debes)
-      </p>
+      <div class="flex items-center gap-2">
+        <UIcon
+          name="i-lucide-scale"
+          class="size-4 text-muted"
+        />
+        <p class="text-sm text-muted">
+          Tu saldo (lo que te deben menos lo que debes)
+        </p>
+      </div>
       <p
         class="text-3xl font-bold"
         :class="netBalanceCents > 0 ? 'text-success' : netBalanceCents < 0 ? 'text-error' : ''"
@@ -112,9 +151,15 @@ async function confirmDebt(debtId: string) {
     <UCard>
       <template #header>
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">
-            Lo que debo (pendiente)
-          </h2>
+          <div class="flex items-center gap-2">
+            <UIcon
+              name="i-lucide-arrow-up-circle"
+              class="size-5 text-error"
+            />
+            <h2 class="text-lg font-semibold">
+              Lo que debo (pendiente)
+            </h2>
+          </div>
           <UBadge
             v-if="data.pendingAsDebtor.length"
             color="error"
@@ -167,9 +212,15 @@ async function confirmDebt(debtId: string) {
     <UCard>
       <template #header>
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">
-            Lo que me deben
-          </h2>
+          <div class="flex items-center gap-2">
+            <UIcon
+              name="i-lucide-arrow-down-circle"
+              class="size-5 text-success"
+            />
+            <h2 class="text-lg font-semibold">
+              Lo que me deben
+            </h2>
+          </div>
           <UBadge
             v-if="data.pendingAsCreditor.length"
             color="success"
@@ -223,9 +274,15 @@ async function confirmDebt(debtId: string) {
     <UCard>
       <template #header>
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">
-            Historial de pagos
-          </h2>
+          <div class="flex items-center gap-2">
+            <UIcon
+              name="i-lucide-receipt"
+              class="size-5 text-primary"
+            />
+            <h2 class="text-lg font-semibold">
+              Historial de pagos
+            </h2>
+          </div>
           <USelect
             v-model="period"
             :items="PERIODS"
@@ -275,32 +332,5 @@ async function confirmDebt(debtId: string) {
         </p>
       </div>
     </UCard>
-
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-      <UCard>
-        <p class="text-sm text-muted">
-          Este mes (fondo común)
-        </p>
-        <p class="text-lg font-semibold">
-          {{ formatEuros(data.aggregateTotals.monthCents) }}
-        </p>
-      </UCard>
-      <UCard>
-        <p class="text-sm text-muted">
-          Este trimestre (fondo común)
-        </p>
-        <p class="text-lg font-semibold">
-          {{ formatEuros(data.aggregateTotals.quarterCents) }}
-        </p>
-      </UCard>
-      <UCard>
-        <p class="text-sm text-muted">
-          Histórico total (fondo común)
-        </p>
-        <p class="text-lg font-semibold">
-          {{ formatEuros(data.aggregateTotals.allTimeCents) }}
-        </p>
-      </UCard>
-    </div>
   </div>
 </template>
