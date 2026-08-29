@@ -1,17 +1,7 @@
 <script setup lang="ts">
-definePageMeta({ middleware: ['auth'] })
+import type { DebtSummaryItem } from '~/components/debt/DebtList.vue'
 
-interface DebtSummaryItem {
-  id: string
-  expenseId: string
-  expenseDescription: string
-  amountCents: number
-  status: string
-  counterpartyId: string
-  counterpartyName: string
-  createdAt: string
-  confirmedAt: string | null
-}
+definePageMeta({ middleware: ['auth'] })
 
 interface DashboardSummary {
   pendingAsDebtor: DebtSummaryItem[]
@@ -22,11 +12,6 @@ interface DashboardSummary {
 }
 
 const { data, refresh } = await useFetch<DashboardSummary>('/api/dashboard')
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pendiente',
-  pending_confirmation: 'Pendiente de confirmación'
-}
 
 const PERIODS = [
   { label: 'Esta semana', value: 'week' },
@@ -72,6 +57,32 @@ const paidByMeInPeriod = computed(() => (data.value?.paidAsDebtor ?? []).filter(
 const paidToMeInPeriod = computed(() => (data.value?.paidAsCreditor ?? []).filter(inPeriod))
 const totalPaidByMeInPeriod = computed(() => paidByMeInPeriod.value.reduce((sum, d) => sum + d.amountCents, 0))
 const totalPaidToMeInPeriod = computed(() => paidToMeInPeriod.value.reduce((sum, d) => sum + d.amountCents, 0))
+
+// Historial: mismas utilidades de orden y paginación que las listas de deudas, para que
+// las cuatro secciones de la página se comporten igual.
+const historySortBy = ref<'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc'>('date-desc')
+const HISTORY_SORT_OPTIONS: { label: string, value: 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc' }[] = [
+  { label: 'Más recientes primero', value: 'date-desc' },
+  { label: 'Más antiguas primero', value: 'date-asc' },
+  { label: 'Importe: mayor a menor', value: 'amount-desc' },
+  { label: 'Importe: menor a mayor', value: 'amount-asc' }
+]
+const historyPage = ref(1)
+const HISTORY_PER_PAGE = 8
+
+const historySorted = computed(() => [...paidByMeInPeriod.value].sort((a, b) => {
+  switch (historySortBy.value) {
+    case 'amount-desc': return b.amountCents - a.amountCents
+    case 'amount-asc': return a.amountCents - b.amountCents
+    case 'date-asc': return new Date(a.confirmedAt ?? 0).getTime() - new Date(b.confirmedAt ?? 0).getTime()
+    default: return new Date(b.confirmedAt ?? 0).getTime() - new Date(a.confirmedAt ?? 0).getTime()
+  }
+}))
+const historyPaged = computed(() => historySorted.value.slice((historyPage.value - 1) * HISTORY_PER_PAGE, historyPage.value * HISTORY_PER_PAGE))
+
+watch([historySortBy, () => paidByMeInPeriod.value.length], () => {
+  historyPage.value = 1
+})
 
 const toast = useToast()
 const busyId = ref<string | null>(null)
@@ -167,140 +178,46 @@ async function markPaidWithoutProof(debtId: string) {
       <p class="text-xs text-muted">
         {{ netBalanceCents > 0 ? 'Te deben más de lo que debes' : netBalanceCents < 0 ? 'Debes más de lo que te deben' : 'Estás al día' }}
       </p>
+      <NuxtLink
+        to="/liquidacion"
+        class="mt-2 inline-flex items-center gap-1 text-sm text-primary hover:underline"
+      >
+        Ver la liquidación por persona
+        <UIcon
+          name="i-lucide-arrow-right"
+          class="size-3.5"
+        />
+      </NuxtLink>
     </UCard>
 
-    <UCard>
-      <template #header>
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <UIcon
-              name="i-lucide-arrow-up-circle"
-              class="size-5 text-error"
-            />
-            <h2 class="text-lg font-semibold">
-              Lo que debo (pendiente)
-            </h2>
-          </div>
-          <UBadge
-            v-if="data.pendingAsDebtor.length"
-            color="error"
-            variant="soft"
-          >
-            {{ formatEuros(totalPendingAsDebtor) }}
-          </UBadge>
-        </div>
-      </template>
-      <div class="flex flex-col divide-y divide-default">
-        <div
-          v-for="debt in data.pendingAsDebtor"
-          :key="debt.id"
-          class="flex flex-col gap-2 py-3 text-sm"
-        >
-          <div class="flex items-center justify-between">
-            <NuxtLink
-              :to="`/ledger/${debt.expenseId}`"
-              class="font-medium hover:underline"
-            >
-              {{ debt.expenseDescription }}
-            </NuxtLink>
-            <p class="font-medium">
-              {{ formatEuros(debt.amountCents) }}
-            </p>
-          </div>
-          <p class="text-muted">
-            A {{ debt.counterpartyName }} · {{ STATUS_LABELS[debt.status] ?? debt.status }}
-          </p>
-          <template v-if="debt.status === 'pending'">
-            <MediaPhotoUpload
-              :upload-url="`/api/debts/${debt.id}/mark-paid`"
-              field-name="proof"
-              accept="image/jpeg,image/png,application/pdf"
-              label="Adjunta el comprobante"
-              description="JPEG, PNG o PDF, máx. 10MB — al subirlo se marca como pagada"
-              :compress="false"
-              @uploaded="refresh"
-            />
-            <UButton
-              size="xs"
-              variant="link"
-              class="self-start px-0"
-              :loading="busyId === debt.id"
-              @click="markPaidWithoutProof(debt.id)"
-            >
-              O marca como pagado sin comprobante
-            </UButton>
-          </template>
-        </div>
-        <p
-          v-if="!data.pendingAsDebtor.length"
-          class="py-4 text-center text-muted"
-        >
-          No debes nada pendiente
-        </p>
-      </div>
-    </UCard>
+    <DebtList
+      :busy-id="busyId"
+      :items="data.pendingAsDebtor"
+      side="debtor"
+      origin="dashboard"
+      title="Lo que debo"
+      icon="i-lucide-arrow-up-circle"
+      :total-cents="totalPendingAsDebtor"
+      badge-color="error"
+      empty-text="No debes nada pendiente"
+      @confirm="confirmDebt"
+      @mark-paid="markPaidWithoutProof"
+      @refresh="refresh"
+    />
 
-    <UCard>
-      <template #header>
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <UIcon
-              name="i-lucide-arrow-down-circle"
-              class="size-5 text-success"
-            />
-            <h2 class="text-lg font-semibold">
-              Lo que me deben
-            </h2>
-          </div>
-          <UBadge
-            v-if="data.pendingAsCreditor.length"
-            color="success"
-            variant="soft"
-          >
-            {{ formatEuros(totalPendingAsCreditor) }}
-          </UBadge>
-        </div>
-      </template>
-      <div class="flex flex-col divide-y divide-default">
-        <div
-          v-for="debt in data.pendingAsCreditor"
-          :key="debt.id"
-          class="flex flex-col gap-2 py-3 text-sm"
-        >
-          <div class="flex items-center justify-between">
-            <NuxtLink
-              :to="`/ledger/${debt.expenseId}`"
-              class="font-medium hover:underline"
-            >
-              {{ debt.expenseDescription }}
-            </NuxtLink>
-            <p class="font-medium">
-              {{ formatEuros(debt.amountCents) }}
-            </p>
-          </div>
-          <div class="flex items-center justify-between">
-            <p class="text-muted">
-              {{ debt.counterpartyName }} · {{ STATUS_LABELS[debt.status] ?? debt.status }}
-            </p>
-            <UButton
-              v-if="debt.status === 'pending_confirmation'"
-              size="xs"
-              color="success"
-              :loading="busyId === debt.id"
-              @click="confirmDebt(debt.id)"
-            >
-              Confirmar recepción
-            </UButton>
-          </div>
-        </div>
-        <p
-          v-if="!data.pendingAsCreditor.length"
-          class="py-4 text-center text-muted"
-        >
-          Nadie te debe nada pendiente
-        </p>
-      </div>
-    </UCard>
+    <DebtList
+      :busy-id="busyId"
+      :items="data.pendingAsCreditor"
+      side="creditor"
+      origin="dashboard"
+      title="Lo que me deben"
+      icon="i-lucide-arrow-down-circle"
+      :total-cents="totalPendingAsCreditor"
+      badge-color="success"
+      empty-text="Nadie te debe nada pendiente"
+      @confirm="confirmDebt"
+      @refresh="refresh"
+    />
 
     <UCard>
       <template #header>
@@ -318,6 +235,7 @@ async function markPaidWithoutProof(debtId: string) {
             v-model="period"
             :items="PERIODS"
             class="w-40"
+            size="sm"
           />
         </div>
       </template>
@@ -341,17 +259,30 @@ async function markPaidWithoutProof(debtId: string) {
         </div>
       </div>
 
-      <div class="mt-4 flex flex-col divide-y divide-default">
+      <div
+        v-if="historySorted.length"
+        class="mt-3"
+      >
+        <USelect
+          v-model="historySortBy"
+          :items="HISTORY_SORT_OPTIONS"
+          class="w-full sm:w-56"
+          size="sm"
+        />
+      </div>
+
+      <div class="mt-2 flex flex-col divide-y divide-default">
         <div
-          v-for="debt in paidByMeInPeriod"
+          v-for="debt in historyPaged"
           :key="debt.id"
           class="flex items-center justify-between py-2 text-sm"
         >
           <NuxtLink
-            :to="`/ledger/${debt.expenseId}`"
+            :to="`/ledger/${debt.expenseId}?from=dashboard`"
             class="hover:underline"
           >
             {{ debt.expenseDescription }}
+            <span class="text-muted">· {{ debt.counterpartyName }}</span>
           </NuxtLink>
           <p>{{ formatEuros(debt.amountCents) }} · {{ new Date(debt.confirmedAt!).toLocaleDateString('es-ES') }}</p>
         </div>
@@ -361,6 +292,17 @@ async function markPaidWithoutProof(debtId: string) {
         >
           Sin pagos confirmados en este periodo
         </p>
+      </div>
+
+      <div
+        v-if="historySorted.length > HISTORY_PER_PAGE"
+        class="mt-4 flex justify-center"
+      >
+        <UPagination
+          v-model:page="historyPage"
+          :total="historySorted.length"
+          :items-per-page="HISTORY_PER_PAGE"
+        />
       </div>
     </UCard>
   </div>

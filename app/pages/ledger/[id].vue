@@ -53,6 +53,20 @@ const route = useRoute()
 const session = authClient.useSession()
 const { data, refresh } = await useFetch<{ expense: ExpenseDetail }>(`/api/expenses/${route.params.id}`)
 
+// "Volver" contextual: el detalle se abre desde varios sitios (libro contable, Central de
+// gastos, Liquidación) y cada enlace indica su origen con ?from=. Enlace fijo por origen,
+// nunca router.back() (mismo criterio que el resto de pantallas de detalle) — así un
+// refresco o un enlace directo siguen teniendo un destino válido (el libro contable).
+const BACK_TARGETS: Record<string, string> = {
+  ledger: '/ledger',
+  dashboard: '/dashboard',
+  liquidacion: '/liquidacion'
+}
+const backTo = computed(() => {
+  const from = typeof route.query.from === 'string' ? route.query.from : ''
+  return BACK_TARGETS[from] ?? '/ledger'
+})
+
 const currentUserId = computed(() => session.value.data?.user.id)
 const currentUserRole = computed(() => (session.value.data?.user as { role?: string } | undefined)?.role)
 const canSeeExpenseProof = computed(() => currentUserRole.value === 'admin' || currentUserRole.value === 'owner')
@@ -148,7 +162,7 @@ async function onDeleteExpense() {
     const deleteUrl: string = `/api/expenses/${route.params.id}`
     await $fetch(deleteUrl, { method: 'DELETE' })
     toast.add({ title: 'Gasto eliminado', color: 'success' })
-    await navigateTo('/ledger')
+    await navigateTo(backTo.value)
   } catch (error) {
     const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
     toast.add({ title: statusMessage ?? 'No se pudo eliminar el gasto', color: 'error' })
@@ -244,7 +258,7 @@ async function saveCreator() {
         variant="ghost"
         color="neutral"
         size="sm"
-        to="/ledger"
+        :to="backTo"
       >
         Volver
       </UButton>
