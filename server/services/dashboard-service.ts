@@ -92,6 +92,9 @@ export async function getDashboardSummary(user: SessionUser): Promise<DashboardS
 export interface MonthlyTotal { monthKey: string, label: string, totalCents: number }
 export interface ExpenseTypeBreakdown { type: string, label: string, totalCents: number, count: number }
 export interface OwnerBalance { userId: string, name: string, netCents: number }
+// Total histórico de recibos subidos por cada propietario (createdBy), como contexto
+// global de cuánto ha gastado cada uno — null para el Invitado (canSeeIndividualDebt).
+export interface CreatorTotal { userId: string, name: string, totalCents: number, count: number }
 
 export interface ExpenseStatistics {
   monthly: MonthlyTotal[]
@@ -99,6 +102,8 @@ export interface ExpenseStatistics {
   // null para el Invitado: el saldo por propietario es desglose de deuda individual
   // (mismo criterio que canSeeIndividualDebt en el resto de la app).
   byOwner: OwnerBalance[] | null
+  // null para el Invitado, igual que byOwner.
+  byCreator: CreatorTotal[] | null
 }
 
 const EXPENSE_TYPE_LABELS: Record<string, string> = {
@@ -113,7 +118,9 @@ export async function getExpenseStatistics(user: SessionUser): Promise<ExpenseSt
   const allExpenses = await db.query.expenses.findMany()
 
   const now = new Date()
-  const months = Array.from({ length: 6 }, (_, i) => {
+  // 12 meses en vez de 6: con un año a la vista se aprecia la estacionalidad de la finca
+  // (verano, derramas anuales…) que medio año esconde.
+  const months = Array.from({ length: 12 }, (_, i) => {
     const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (5 - i), 1))
     const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1))
     return { start, end, key: `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}`, label: `${MONTH_LABELS[start.getUTCMonth()]} ${start.getUTCFullYear()}` }
@@ -139,6 +146,7 @@ export async function getExpenseStatistics(user: SessionUser): Promise<ExpenseSt
   }))
 
   let byOwner: OwnerBalance[] | null = null
+  let byCreator: CreatorTotal[] | null = null
   if (canSeeIndividualDebt(user)) {
     const allDebts = await db.query.debts.findMany()
     const allUsers = await db.select({ id: users.id, name: users.name }).from(users)
@@ -152,7 +160,19 @@ export async function getExpenseStatistics(user: SessionUser): Promise<ExpenseSt
       .map(u => ({ userId: u.id, name: u.name, netCents: netByUser.get(u.id) ?? 0 }))
       .filter(o => o.netCents !== 0)
       .sort((a, b) => b.netCents - a.netCents)
+
+    const spentByCreator = new Map<string, { totalCents: number, count: number }>()
+    for (const expense of allExpenses) {
+      const entry = spentByCreator.get(expense.createdBy) ?? { totalCents: 0, count: 0 }
+      entry.totalCents += expense.amountCents
+      entry.count += 1
+      spentByCreator.set(expense.createdBy, entry)
+    }
+    byCreator = allUsers
+      .filter(u => spentByCreator.has(u.id))
+      .map(u => ({ userId: u.id, name: u.name, ...spentByCreator.get(u.id)! }))
+      .sort((a, b) => b.totalCents - a.totalCents)
   }
 
-  return { monthly, byType, byOwner }
+  return { monthly, byType, byOwner, byCreator }
 }
