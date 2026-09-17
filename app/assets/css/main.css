@@ -16,3 +16,45 @@
   --color-green-900: #0A5331;
   --color-green-950: #052E16;
 }
+
+/* Cabeceras de sección dentro de los desplegables del menú de navegación (ítems
+   type 'label', ver app/layouts/default.vue): por defecto el popover renderiza los
+   hijos en un grid de 2 columnas donde una cabecera es indistinguible de un enlace.
+   Con la clase ancla nav-section-label ocupa toda la fila y adopta tipografía de
+   encabezado; nav-section-divider añade el salto y la línea entre grupos. El popover
+   de escritorio renderiza la cabecera como button childLink; el menú vertical del
+   móvil como div label — se cubren ambas variantes. */
+[data-slot="childList"] > li:has(> [data-slot="childLink"].nav-section-label) {
+  grid-column: 1 / -1;
+  padding-top: 0.25rem;
+}
+
+[data-slot="childLink"].nav-section-label {
+  height: auto;
+  padding: 0 0.625rem;
+}
+
+[data-slot="childLink"].nav-section-label [data-slot="childLinkLabel"] {
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ui-text-muted);
+}
+
+[data-slot="label"].nav-section-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ui-text-muted);
+}
+
+[data-slot="label"].nav-section-label [data-slot="linkLabel"] {
+  color: var(--ui-text-muted);
+}
+
+[data-slot="childList"] > li:has(> .nav-section-divider) {
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--ui-border);
+  padding-top: 0.75rem;
+}
