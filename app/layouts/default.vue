@@ -17,11 +17,20 @@ const navLinks = computed<NavigationMenuItem[]>(() => {
     label: 'Finanzas',
     icon: 'i-lucide-wallet',
     children: [
-      { label: 'Libro contable', icon: 'i-lucide-book-open', to: '/ledger' },
-      { label: 'Central de gastos', icon: 'i-lucide-chart-pie', to: '/dashboard' },
-      { label: 'Liquidación', icon: 'i-lucide-arrow-left-right', to: '/liquidacion' },
-      { label: 'Estadísticas', icon: 'i-lucide-bar-chart-3', to: '/estadisticas' },
-      { label: 'Exportar', icon: 'i-lucide-download', to: '/export' }
+      // Dos secciones para que no se confundan los dos mundos financieros: los gastos
+      // repartidos entre miembros (libro contable) y la cuenta bancaria real (banco).
+      // El popover horizontal de UNavigationMenu no anida nietos: la separación va con
+      // ítems type 'label' (cabecera estática) dentro del mismo desplegable. Las clases
+      // completas y literales (sin interpolación) son requisito de detección de Tailwind.
+      { label: 'Gastos', type: 'label', class: 'nav-section-label' },
+      { label: 'Libro contable', description: 'Recibos y gastos repartidos entre miembros', icon: 'i-lucide-book-open', to: '/ledger' },
+      { label: 'Central de gastos', description: 'Tus deudas y pagos pendientes', icon: 'i-lucide-chart-pie', to: '/dashboard' },
+      { label: 'Liquidación', description: 'Deudas cruzadas por los gastos (opción de incluir el banco)', icon: 'i-lucide-arrow-left-right', to: '/liquidacion' },
+      { label: 'Estadísticas', description: 'Evolución del gasto y por persona', icon: 'i-lucide-bar-chart-3', to: '/estadisticas' },
+      { label: 'Exportar', description: 'Exportación fiscal de los gastos', icon: 'i-lucide-download', to: '/export' },
+      { label: 'Cuenta bancaria', type: 'label', class: 'nav-section-label nav-section-divider' },
+      { label: 'Cuenta bancaria', description: 'Movimientos y saldo real del banco', icon: 'i-lucide-landmark', to: '/banco' },
+      { label: 'Contribuciones', description: 'Cuotas, aportes y conciliación', icon: 'i-lucide-coins', to: '/banco/contribuciones' }
     ]
   })
   links.push({
@@ -55,55 +64,51 @@ const navLinks = computed<NavigationMenuItem[]>(() => {
 
 <template>
   <div>
-    <UHeader>
-      <template #title>
-        <NuxtLink
-          to="/"
-          class="font-semibold"
-        >
-          Finca La Unión
-        </NuxtLink>
-      </template>
-
-      <UNavigationMenu :items="navLinks" />
+    <UHeader
+      title="Finca La Unión"
+      to="/"
+    >
+      <!-- ClientOnly: la sesión se resuelve en el cliente DESPUÉS del primer render (el
+        fetch de get-session no viaja en el payload de SSR), así que el servidor pinta el
+        header logueado y el cliente el deslogueado → hydration mismatch en cascada
+        (nav, título, Entrar/Salir). Renderizando tras el montaje, ambos lados coinciden. -->
+      <ClientOnly>
+        <UNavigationMenu :items="navLinks" />
+      </ClientOnly>
 
       <template #right>
-        <UButton
-          v-if="!session"
-          to="/login"
-          variant="soft"
-        >
-          Entrar
-        </UButton>
-        <UButton
-          v-else
-          color="neutral"
-          variant="ghost"
-          @click="authClient.signOut({ fetchOptions: { onSuccess: () => { navigateTo('/login') } } })"
-        >
-          Salir
-        </UButton>
-        <UColorModeButton />
+        <ClientOnly>
+          <UButton
+            v-if="!session"
+            to="/login"
+            variant="soft"
+          >
+            Entrar
+          </UButton>
+          <UButton
+            v-else
+            color="neutral"
+            variant="ghost"
+            @click="authClient.signOut({ fetchOptions: { onSuccess: () => { navigateTo('/login') } } })"
+          >
+            Salir
+          </UButton>
+          <UColorModeButton />
+        </ClientOnly>
       </template>
 
       <template #body>
-        <UNavigationMenu
-          :items="navLinks"
-          orientation="vertical"
-          class="-mx-2.5"
-        />
+        <ClientOnly>
+          <UNavigationMenu
+            :items="navLinks"
+            orientation="vertical"
+            class="-mx-2.5"
+          />
+        </ClientOnly>
       </template>
     </UHeader>
 
     <UMain class="mx-auto w-full max-w-screen-sm px-4 py-6 sm:max-w-screen-md">
-      <UAlert
-        v-if="session?.user?.pendingApproval"
-        color="warning"
-        variant="soft"
-        class="mb-4"
-        title="Tu cuenta está pendiente de aprobación"
-        description="Un administrador debe revisar tu registro. Mientras tanto, tu acceso es de solo lectura."
-      />
       <slot />
     </UMain>
 
