@@ -1,4 +1,7 @@
 <script setup lang="ts">
+// Solo-para-invitados, igual que /login: con sesión activa no tiene sentido registrarse.
+definePageMeta({ middleware: ['guest'] })
+
 const toast = useToast()
 const name = ref('')
 const email = ref('')
@@ -13,8 +16,8 @@ async function onSubmit() {
       method: 'POST',
       body: { email: email.value, password: password.value, name: name.value }
     })
-    toast.add({ title: 'Cuenta creada. Un administrador debe aprobarla para darte acceso completo.', color: 'success' })
-    await navigateTo('/')
+    toast.add({ title: 'Cuenta creada. Un administrador debe aprobarla antes de que puedas entrar.', color: 'success' })
+    await navigateTo('/login')
   } catch {
     toast.add({ title: 'No se pudo crear la cuenta (puede que el email ya esté registrado)', color: 'error' })
   } finally {
@@ -37,7 +40,7 @@ async function onSubmit() {
         variant="soft"
         class="mb-4"
         title="Acceso pendiente de aprobación"
-        description="Al registrarte, un administrador debe aprobar tu cuenta antes de que tengas acceso completo."
+        description="Al registrarte, un administrador debe aprobar tu cuenta antes de que puedas entrar a la aplicación."
       />
 
       <form

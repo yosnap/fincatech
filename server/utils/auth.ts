@@ -1,6 +1,8 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { admin } from 'better-auth/plugins'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
+import { eq } from 'drizzle-orm'
 import { db } from '../db/client'
 import * as schema from '../db/schema'
 import { getEnv } from './env'
@@ -51,7 +53,35 @@ export const auth = betterAuth({
       roles: { admin: adminRole, owner: ownerRole, guest: guestRole }
     })
   ],
+  hooks: {
+    // Una cuenta pendiente de aprobación (auto-registro) NO puede iniciar sesión: sin rol
+    // asignado por el Admin no se entra ni con acceso de solo lectura — ver cualquier dato
+    // requiere aprobación previa (decisión de producto 2026-09-14). El bloqueo también
+    // aplica a las llamadas server-side (auth.api.signInEmail), por eso self-register ya
+    // no auto-inicia sesión tras crear la cuenta.
+    before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === '/sign-in/email') {
+        const body = ctx.body as { email?: string }
+        if (body.email) {
+          const [user] = await db
+            .select({ pendingApproval: schema.users.pendingApproval })
+            .from(schema.users)
+            .where(eq(schema.users.email, body.email))
+          if (user?.pendingApproval) {
+            throw new APIError('FORBIDDEN', {
+              message: 'Tu cuenta está pendiente de aprobación por un administrador'
+            })
+          }
+        }
+      }
+    })
+  },
   advanced: {
+    // Prefijo propio de cookies (fincatech.session_token en vez de better-auth.session_token):
+    // las cookies de localhost se comparten entre TODOS los puertos, así que otra app en
+    // localhost con Better Auth por defecto (p. ej. academia en el 3016) machacaba la
+    // cookie de sesión de esta app al refrescar la suya → 401 y expulsión a /login.
+    cookiePrefix: 'fincatech',
     defaultCookieAttributes: {
       httpOnly: true,
       sameSite: 'lax',

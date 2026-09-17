@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: fincatech
       POSTGRES_DB: fincatech
     ports:
-      - "5432:5432"
+      - "5438:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
