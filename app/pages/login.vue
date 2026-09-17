@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { authClient } from '~/utils/auth-client'
 
+// Solo-para-invitados: con sesión activa, /login redirige a la app en vez de mostrar
+// otra vez el formulario (middleware guest, espejo del middleware auth).
+definePageMeta({ middleware: ['guest'] })
+
 const toast = useToast()
 const email = ref('')
 const password = ref('')
@@ -17,7 +21,13 @@ async function onSubmit() {
   })
   loading.value = false
   if (error) {
-    toast.add({ title: 'Email o contraseña incorrectos', color: 'error' })
+    // Mensaje específico cuando lo hay (p. ej. cuenta pendiente de aprobación); el caso
+    // de credenciales inválidas llega sin mensaje localizado y mantiene el genérico.
+    const isInvalidCredentials = error.code === 'INVALID_EMAIL_OR_PASSWORD'
+    toast.add({
+      title: isInvalidCredentials || !error.message ? 'Email o contraseña incorrectos' : error.message,
+      color: 'error'
+    })
     return
   }
   toast.add({ title: 'Sesión iniciada', color: 'success' })

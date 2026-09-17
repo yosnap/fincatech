@@ -21,11 +21,22 @@ interface CounterpartySettlement {
   netCents: number
 }
 
+interface FondoComunMember {
+  memberId: string
+  name: string
+  contributedCents: number
+  withdrawalsShareCents: number
+  balanceCents: number
+}
+
 interface Settlement {
   totalTheyOweMeCents: number
   totalIOweThemCents: number
   totalNetCents: number
   counterparties: CounterpartySettlement[]
+  // Sección nueva de la cuenta bancaria: null para el Invitado (mismo criterio que
+  // totalSpentCents).
+  fondoComun: FondoComunMember[] | null
 }
 
 const { data } = await useFetch<Settlement>('/api/settlement')
@@ -68,6 +79,12 @@ function netLabel(netCents: number): string {
   if (netCents < 0) return `Le debes ${formatEuros(-netCents)}`
   return 'Compensados'
 }
+
+// Filtro principal: por defecto la liquidación SOLO refleja los gastos del libro contable
+// (compras para la casa que no pasan por el banco). "Con banco" añade el saldo con el
+// fondo común de la cuenta bancaria para poder hacer cuentas completas (todo lo pagado
+// en un año, etc.). Sin datos de banco (Invitado) el filtro no se ofrece.
+const includeBank = ref(false)
 </script>
 
 <template>
@@ -78,6 +95,31 @@ function netLabel(netCents: number): string {
     <h1 class="text-xl font-semibold">
       Liquidación de cuentas
     </h1>
+
+    <div
+      v-if="data.fondoComun"
+      class="flex flex-wrap items-center justify-between gap-2"
+    >
+      <UButtonGroup variant="soft">
+        <UButton
+          :variant="!includeBank ? 'solid' : 'soft'"
+          icon="i-lucide-receipt"
+          @click="includeBank = false"
+        >
+          Sin banco
+        </UButton>
+        <UButton
+          :variant="includeBank ? 'solid' : 'soft'"
+          icon="i-lucide-landmark"
+          @click="includeBank = true"
+        >
+          Con banco
+        </UButton>
+      </UButtonGroup>
+      <p class="text-xs text-muted">
+        {{ includeBank ? 'Gastos del libro contable + saldo con el fondo común de la cuenta bancaria' : 'Solo gastos del libro contable (compras que no pasan por el banco)' }}
+      </p>
+    </div>
 
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
       <UCard
@@ -194,5 +236,10 @@ function netLabel(netCents: number): string {
         No hay deudas pendientes con nadie. Todo al día.
       </p>
     </UCard>
+
+    <BankFondoComunSection
+      v-if="includeBank && data.fondoComun"
+      :fondo-comun="data.fondoComun"
+    />
   </div>
 </template>

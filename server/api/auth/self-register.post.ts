@@ -15,9 +15,9 @@ const bodySchema = z.object({
 })
 
 // Auto-registro público con aprobación de Admin: cualquiera puede crear una cuenta, pero
-// entra con role='guest' (acceso de solo lectura, sin datos financieros individuales — ver
-// server/utils/rbac.ts) y pendingApproval=true hasta que un Admin le suba el rol desde
-// /members (server/api/members/[id]/role.patch.ts limpia pendingApproval al cambiar el rol).
+// queda pendingApproval=true SIN acceso de ningún tipo — el hook de sign-in de auth.ts
+// rechaza su login hasta que un Admin le suba el rol desde /members (role.patch limpia
+// pendingApproval al cambiar el rol). Por eso aquí NO se auto-inicia sesión tras crearla.
 // No usa el endpoint público /sign-up/email de Better Auth (disableSignUp sigue en true) —
 // llama a auth.api.createUser server-side, igual que accept-invite/bootstrap-admin, para
 // controlar exactamente el role y el flag pendingApproval (server-owned, ver auth.ts).
@@ -62,17 +62,7 @@ export default defineEventHandler(async (event) => {
     metadata: { email: body.email }
   })
 
-  try {
-    const { headers } = await auth.api.signInEmail({
-      body: { email: body.email, password: body.password },
-      returnHeaders: true
-    })
-    for (const cookie of headers.getSetCookie()) {
-      appendResponseHeader(event, 'set-cookie', cookie)
-    }
-  } catch {
-    // La cuenta se creó igualmente; el usuario puede iniciar sesión manualmente en /login.
-  }
-
+  // Sin auto-inicio de sesión: la cuenta está pendiente de aprobación y el hook de
+  // sign-in la rechazaría. El usuario entrará cuando el Admin le asigne rol.
   return { user: { id: userId, email: body.email, name: body.name, role: 'guest' } }
 })
