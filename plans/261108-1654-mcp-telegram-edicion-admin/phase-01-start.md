@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Phase 1: Diagnóstico y detector de duplicados"
-status: todo
+status: completed
 priority: P1
 effort: 5h
 dependencies: []

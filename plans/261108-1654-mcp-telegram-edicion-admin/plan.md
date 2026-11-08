@@ -1,7 +1,7 @@
 ---
 title: "Gestión admin desde Telegram (agente IA + MCP) y edición financiera en la web"
 description: "Servidor MCP remoto dentro de la app con las acciones de finanzas, tareas, ideas y reservas; bot de Telegram con agente Claude que usa esas herramientas (solo admin); edición completa de aportes, fecha de gastos y detector de duplicados en la web."
-status: pending
+status: in-progress
 priority: P1
 effort: 40h
 branch: feat/v0.17.0
@@ -69,8 +69,8 @@ El admin necesita corregir datos financieros (aportes duplicados, fechas mal pue
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Diagnóstico y detector de duplicados](./phase-01-start.md) | Pending |
-| 2 | [Edición de aportes en la web](./phase-02-edicion-aportes-web.md) | Pending |
+| 1 | [Diagnóstico y detector de duplicados](./phase-01-start.md) | Completed (diagnóstico en producción pendiente) |
+| 2 | [Edición de aportes en la web](./phase-02-edicion-aportes-web.md) | Completed |
 | 3 | [Fecha de gastos](./phase-03-fecha-gastos.md) | Pending |
 | 4 | [Capa de herramientas y servidor MCP](./phase-04-capa-herramientas-y-mcp.md) | Pending |
 | 5 | [Agente de Telegram](./phase-05-agente-telegram.md) | Pending |

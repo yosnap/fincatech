@@ -299,3 +299,25 @@ export function groupPossibleDuplicates<T extends DuplicateCandidate>(items: T[]
   }
   return [...groups.values()].filter(group => group.length > 1)
 }
+
+// ---- Edición de aportes vinculados ----
+
+export interface LinkedSyncInput {
+  // Estado ANTES de editar.
+  contribution: { type: string, period: string | null, amountCents: number, method: string }
+  // Cuántos aportes comparten el movimiento (un adelanto multi-mes comparte uno).
+  linkedCount: number
+  transaction: { amountCents: number, description: string }
+  memberName: string
+}
+
+// ¿El movimiento vinculado es el ingreso auto-creado de ESTA transferencia individual? Solo
+// entonces se sincroniza al editar el aporte (importe, fecha, descripción). Un movimiento
+// compartido (adelanto) o vinculado a mano refleja dinero real del banco y no se toca.
+export function isOwnAutoTransferDeposit(input: LinkedSyncInput): boolean {
+  const { contribution, linkedCount, transaction, memberName } = input
+  if (contribution.method !== 'transfer' || linkedCount !== 1) return false
+  if (transaction.amountCents !== contribution.amountCents) return false
+  const periods = contribution.period ? [contribution.period] : []
+  return transaction.description === buildTransferDescription(contribution.type, periods, memberName)
+}

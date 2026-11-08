@@ -10,6 +10,7 @@ import {
   expandQuotaPeriods,
   groupPossibleDuplicates,
   isDuplicateCheckedType,
+  isOwnAutoTransferDeposit,
   isValidPeriod
 } from './bank-core'
 import { getActiveMembers, getSettings, type ActiveMember, type FinanceSettings } from './bank-service'
@@ -257,11 +258,17 @@ interface UpdateContributionInput {
   actorId: string
   notes?: string | null
   date?: string
+  amountCents?: number
+  type?: ContributionType
+  // 'YYYY-MM' para quota; null para el resto. Ausente = no tocar.
+  period?: string | null
 }
 
-// Edición acotada (admin): notas y fecha del aporte. El importe, tipo, período y método no
-// se editan — cambiarían el reparto del fondo común o el vínculo bancario; para corregirlos
-// se borra y se registra de nuevo (mismo criterio conservador que updateExpenseParticipants).
+// Edición completa (admin): notas, fecha, importe, tipo y período. El método no se edita
+// (cambiaría la naturaleza del vínculo bancario). Si el aporte es una transferencia
+// individual con su ingreso auto-creado, ese movimiento se sincroniza (importe, fecha y
+// descripción) para que el saldo siga cuadrando. Si el movimiento es compartido (adelanto) o
+// se vinculó a mano, no se toca y por eso no se permite cambiar el importe sin desvincular.
 export async function updateContribution(input: UpdateContributionInput) {
   return db.transaction(async (tx) => {
     const [contribution] = await tx.select().from(contributions)
@@ -270,33 +277,87 @@ export async function updateContribution(input: UpdateContributionInput) {
       throw createError({ statusCode: 404, statusMessage: 'Aporte no encontrado' })
     }
 
-    // Invariante de conciliación: el depósito vinculado nunca puede ser anterior a la
-    // fecha del aporte (el dinero existía en manos del tesorero antes del banco). Si la
-    // edición mueve la fecha, se revalida contra el movimiento vinculado.
-    if (input.date && contribution.bankTransactionId) {
-      const [transaction] = await tx.select({ date: bankTransactions.date })
-        .from(bankTransactions)
-        .where(eq(bankTransactions.id, contribution.bankTransactionId))
-      if (transaction && transaction.date < input.date) {
-        throw createError({ statusCode: 400, statusMessage: 'El ingreso vinculado es anterior a la nueva fecha del aporte' })
+    const next = {
+      notes: input.notes !== undefined ? input.notes : contribution.notes,
+      date: input.date ?? contribution.date,
+      amountCents: input.amountCents ?? contribution.amountCents,
+      type: input.type ?? contribution.type,
+      period: input.period !== undefined ? input.period : contribution.period
+    }
+    // Pasar a no-cuota sin indicar período limpia el período heredado.
+    if (next.type !== 'quota' && input.period === undefined) next.period = null
+
+    if (next.type === 'quota') {
+      if (!next.period || !isValidPeriod(next.period)) {
+        throw createError({ statusCode: 400, statusMessage: 'La cuota requiere un período válido (YYYY-MM)' })
+      }
+    } else if (next.period) {
+      throw createError({ statusCode: 400, statusMessage: 'Solo las cuotas mensuales llevan período' })
+    }
+
+    const amountChanged = next.amountCents !== contribution.amountCents
+    let syncedTransactionId: string | null = null
+
+    if (contribution.bankTransactionId) {
+      const [transaction] = await tx.select().from(bankTransactions)
+        .where(eq(bankTransactions.id, contribution.bankTransactionId)).for('update')
+
+      if (transaction) {
+        const siblings = await tx.select({ id: contributions.id }).from(contributions)
+          .where(eq(contributions.bankTransactionId, transaction.id))
+        const [member] = await tx.select({ name: users.name }).from(users).where(eq(users.id, contribution.memberId))
+        const memberName = member?.name ?? ''
+
+        const syncable = isOwnAutoTransferDeposit({
+          contribution,
+          linkedCount: siblings.length,
+          transaction,
+          memberName
+        })
+
+        if (syncable) {
+          await tx.update(bankTransactions).set({
+            amountCents: next.amountCents,
+            date: next.date,
+            description: buildTransferDescription(next.type, next.period ? [next.period] : [], memberName)
+          }).where(eq(bankTransactions.id, transaction.id))
+          syncedTransactionId = transaction.id
+        } else {
+          if (amountChanged) {
+            throw createError({
+              statusCode: 409,
+              statusMessage: 'El ingreso vinculado es compartido o se vinculó a mano: desvincula el aporte antes de cambiar el importe'
+            })
+          }
+          // Invariante de conciliación: el depósito nunca es anterior a la fecha del aporte.
+          if (transaction.date < next.date) {
+            throw createError({ statusCode: 400, statusMessage: 'El ingreso vinculado es anterior a la nueva fecha del aporte' })
+          }
+        }
       }
     }
 
     const [updated] = await tx.update(contributions)
-      .set({
-        notes: input.notes !== undefined ? input.notes : contribution.notes,
-        date: input.date ?? contribution.date,
-        updatedAt: new Date()
-      })
+      .set({ ...next, updatedAt: new Date() })
       .where(eq(contributions.id, contribution.id))
       .returning()
+      .catch((error: unknown) => {
+        if (getPgErrorCode(error) === '23505') {
+          throw createError({ statusCode: 409, statusMessage: 'Ese miembro ya tiene cuota registrada en ese mes' })
+        }
+        throw error
+      })
 
     await writeAuditLog({
       actorId: input.actorId,
       action: 'contribution_updated',
       entityType: 'contribution',
       entityId: contribution.id,
-      metadata: { date: input.date }
+      metadata: {
+        before: { date: contribution.date, amountCents: contribution.amountCents, type: contribution.type, period: contribution.period, notes: contribution.notes },
+        after: next,
+        syncedTransactionId
+      }
     }, tx)
 
     return updated

@@ -10,6 +10,7 @@ import {
   duplicateKey,
   groupPossibleDuplicates,
   isDuplicateCheckedType,
+  isOwnAutoTransferDeposit,
   expandQuotaPeriods,
   isValidPeriod,
   monthRange,
@@ -305,5 +306,31 @@ describe('detección de duplicados de aportes', () => {
     expect(isDuplicateCheckedType('extraordinary')).toBe(true)
     expect(isDuplicateCheckedType('pre_purchase')).toBe(true)
     expect(isDuplicateCheckedType('quota')).toBe(false)
+  })
+})
+
+describe('isOwnAutoTransferDeposit', () => {
+  const own = {
+    contribution: { type: 'quota', period: '2026-10', amountCents: 5000, method: 'transfer' },
+    linkedCount: 1,
+    transaction: { amountCents: 5000, description: 'Cuota 2026-10 — Ana' },
+    memberName: 'Ana'
+  }
+
+  it('reconoce el ingreso auto-creado de una transferencia individual', () => {
+    expect(isOwnAutoTransferDeposit(own)).toBe(true)
+  })
+
+  it('no toca movimientos compartidos por un adelanto', () => {
+    expect(isOwnAutoTransferDeposit({ ...own, linkedCount: 3 })).toBe(false)
+  })
+
+  it('no toca movimientos vinculados a mano (descripción o importe distintos)', () => {
+    expect(isOwnAutoTransferDeposit({ ...own, transaction: { amountCents: 5000, description: 'Ingreso efectivo octubre' } })).toBe(false)
+    expect(isOwnAutoTransferDeposit({ ...own, transaction: { ...own.transaction, amountCents: 9000 } })).toBe(false)
+  })
+
+  it('no aplica a aportes en efectivo', () => {
+    expect(isOwnAutoTransferDeposit({ ...own, contribution: { ...own.contribution, method: 'cash' } })).toBe(false)
   })
 })

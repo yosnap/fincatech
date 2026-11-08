@@ -113,6 +113,15 @@ function onGridRegister(memberId: string, period: string) {
   openForm({ memberId, period, type: 'quota' })
 }
 
+// ---- Edición (solo Admin) ----
+const editTarget = ref<ContributionItem | null>(null)
+const editOpen = ref(false)
+
+function onEdit(contribution: ContributionItem) {
+  editTarget.value = contribution
+  editOpen.value = true
+}
+
 // ---- Vinculación ----
 const linkTarget = ref<ContributionItem | null>(null)
 const linkOpen = ref(false)
@@ -219,6 +228,7 @@ const activeTab = ref<'quota' | 'pre_purchase' | 'extraordinary'>('quota')
           :current-user-id="currentUserId"
           @link="onLink"
           @unlink="onUnlink"
+          @edit="onEdit"
           @delete="onDelete"
         />
       </template>
@@ -230,6 +240,7 @@ const activeTab = ref<'quota' | 'pre_purchase' | 'extraordinary'>('quota')
           :current-user-id="currentUserId"
           @link="onLink"
           @unlink="onUnlink"
+          @edit="onEdit"
           @delete="onDelete"
         />
       </template>
@@ -241,6 +252,7 @@ const activeTab = ref<'quota' | 'pre_purchase' | 'extraordinary'>('quota')
           :current-user-id="currentUserId"
           @link="onLink"
           @unlink="onUnlink"
+          @edit="onEdit"
           @delete="onDelete"
         />
       </template>
@@ -268,6 +280,12 @@ const activeTab = ref<'quota' | 'pre_purchase' | 'extraordinary'>('quota')
       :initial-period="formPreset.period"
       :initial-type="formPreset.type"
       @created="refreshAll"
+    />
+
+    <BankContributionEditDialog
+      v-model:open="editOpen"
+      :contribution="editTarget"
+      @saved="refreshAll"
     />
 
     <BankLinkDepositDialog

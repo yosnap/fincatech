@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Phase 2: Edición de aportes en la web"
-status: todo
+status: completed
 priority: P1
 effort: 7h
 dependencies: [1]
