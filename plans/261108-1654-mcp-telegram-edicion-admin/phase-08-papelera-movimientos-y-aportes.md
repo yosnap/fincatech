@@ -1,7 +1,7 @@
 ---
 phase: 8
 title: "Phase 8: Papelera de movimientos, aportes y gastos"
-status: todo
+status: completed
 priority: P1
 effort: 14h
 dependencies: [1]
@@ -73,3 +73,18 @@ Eliminar un movimiento bancario, un aporte o un gasto lo manda a la papelera (no
 - **[RT8-11] Ficheros completos para gastos:** `server/db/schema/expenses.ts`, `expense-service.ts`, `dashboard-service.ts`, `export-service.ts`, `export-formatters.ts`, `assessment-service.ts`, `api/expenses/[id].delete.ts`, `api/expenses/[id]/restore.post.ts`, `[id]/purge.delete.ts`, y `expenses` en `trash.get.ts`.
 - **Caducidad (decisión del usuario):** nada se elimina solo; la papelera se vacía únicamente a mano.
 
+
+## Estado de la implementación (2026-11-08)
+
+Implementado completo, con las decisiones del red-team:
+
+- **Migración `0016_young_master_mold.sql`:** columnas `deleted_at`/`deleted_by` en `bank_transactions`, `contributions` y `expenses`; `bank_transactions.auto_created_for_contribution_id` (+ índice); índice único de cuota recreado con `WHERE type='quota' AND deleted_at IS NULL`; backfill de los ingresos auto-creados con el mismo criterio que la heurística anterior; cabecera que documenta que la migración no admite rollback de la app con filas en la papelera (RT8-7).
+- **Filtro único:** `server/utils/soft-delete.ts` con `notDeleted()`, `assertNotTrashed()`, `listLiveDebts()` (innerJoin con `expenses` vivos) y `listLiveExpenses()`. Aplicado a la lista cerrada de consultas del plan (bank-service, contribution-service, settlement-service, dashboard-service, export-service, `api/bank/*`, `api/expenses/*`, `api/debts/*`).
+- **Servicios:** `trashTransaction`/`restoreTransaction`/`purgeTransaction` (bank-service), `trashContribution`/`restoreContribution`/`purgeContribution` (contribution-service), `trashExpense`/`restoreExpense`/`purgeExpense` (expense-service), con idempotencia, guards bajo `FOR UPDATE` y auditoría `*_trashed`/`*_restored`/`*_purged`.
+- **RT8-3:** cascada aporte → ingreso auto-creado solo si el actor es Admin, dentro de la misma transacción; la heurística `isOwnAutoTransferDeposit` pasa a leer la columna (y sirve igual para sincronizar la edición del aporte).
+- **RT8-1:** `computeSettlement` descarta deudas cuyo gasto no está vivo; todas las lecturas de deudas usan `liveDebts()`.
+- **RT8-6:** los `proof.get.ts` de movimientos, gastos y cuotas devuelven 404 a no-Admin cuando el padre está en la papelera.
+- **RT8-9:** el guard idempotente de `executeApprovedProposal` y `proposals/[id].delete.ts` leen sin filtro de papelera; si la derrama estaba en la papelera, se audita también `expense_purged` con `cascadeFrom`.
+- **UI:** `/admin/trash` con secciones de movimientos, aportes y gastos (Restaurar / Eliminar definitivamente, «Restaurar igualmente» ante 409 `possible_duplicate`, avisos del servidor); textos de confirmación de `/banco`, `/banco/contribuciones` y `/ledger/[id]` pasan a «mover a la papelera».
+- **Tests:** `server/services/soft-delete.integration.test.ts` (Postgres real, se activa con `TEST_DATABASE_URL`): grid y mes liberado tras la papelera de una cuota, 409 al restaurar sobre otra cuota del mismo mes, doble papelera/restauración idempotentes, cascada y restauración del ingreso espejo, movimiento fuera del listado, gasto fuera de la liquidación y guards de purga. Más el test unitario RT8-1 en `settlement-core.test.ts`.
+- **Pendiente manual:** copia de seguridad de la BD de producción justo antes de desplegar (la migración es aditiva, pero el backfill y la recreación del índice único tocan datos reales).
