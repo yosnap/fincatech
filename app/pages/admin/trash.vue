@@ -8,7 +8,9 @@ interface TrashItem {
   date?: string
   type?: string
   direction?: string
+  mortgagePeriod?: string | null
   discardedAt: string
+
 }
 
 interface TrashSummary {
@@ -70,9 +72,14 @@ function businessCode(error: unknown): string | undefined {
 }
 
 async function purge(section: TrashSection, item: TrashItem) {
+  // Un cargo automático de la hipoteca no se regenera al purgarlo: la marca de agua del cron
+  // ya pasó ese mes. El admin tiene que saberlo antes de confirmar.
+  const mortgageNote = item.mortgagePeriod
+    ? ` Es el cargo automático de la hipoteca de ${item.mortgagePeriod}: si lo borras definitivamente, ese mes no se volverá a generar.`
+    : ''
   const confirmed = await useConfirmDialog()({
     title: 'Eliminar definitivamente',
-    description: 'Esta acción NO se puede deshacer. El elemento y sus archivos asociados se borran para siempre.',
+    description: `Esta acción NO se puede deshacer. El elemento y sus archivos asociados se borran para siempre.${mortgageNote}`,
     confirmLabel: 'Eliminar',
     color: 'error'
   })

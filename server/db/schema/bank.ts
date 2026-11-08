@@ -24,6 +24,10 @@ export const bankTransactions = pgTable('bank_transactions', {
   // createContribution: permite saber sin heurísticas si el movimiento y el aporte son la
   // misma operación y, por tanto, si deben moverse juntos a la papelera.
   autoCreatedForContributionId: uuid('auto_created_for_contribution_id'),
+  // Mes ('YYYY-MM') del cargo automático de la hipoteca (fase 7). Null en cualquier otro
+  // movimiento; editarlo a mano lo convierte en manual (`mortgagePeriod` vuelve a null) para
+  // que el relleno no lo vuelva a tocar.
+  mortgagePeriod: text('mortgage_period'),
   // Borrado lógico (papelera, fase 8): la fila se conserva con su justificante y todas las
   // lecturas la excluyen con notDeleted(). Borrado definitivo solo desde /admin/trash.
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -31,7 +35,11 @@ export const bankTransactions = pgTable('bank_transactions', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 }, table => [
   index('bank_transactions_date_idx').on(table.date),
-  index('bank_transactions_auto_contribution_idx').on(table.autoCreatedForContributionId)
+  index('bank_transactions_auto_contribution_idx').on(table.autoCreatedForContributionId),
+  // Un único cargo automático por mes, ignorando la papelera: borrar un mes y volver a
+  // rellenar debe poder recrearlo (fase 7 + fase 8, RT8-10).
+  uniqueIndex('bank_transactions_mortgage_period_unique').on(table.mortgagePeriod)
+    .where(sql`${table.mortgagePeriod} is not null and ${table.deletedAt} is null`)
 ])
 
 // Aportaciones de los miembros a la copropiedad: aportes pre-compra (histórico), cuota
@@ -80,5 +88,8 @@ export const financeSettings = pgTable('finance_settings', {
   quotaAmountCents: integer('quota_amount_cents'),
   // 'YYYY-MM' del primer mes con cuota obligatoria.
   quotaStartMonth: text('quota_start_month'),
+  // Marca de agua de la hipoteca: el cron solo genera meses posteriores. Evita recrear un
+  // cargo que el admin borró a mano (fase 7).
+  mortgageGeneratedThrough: text('mortgage_generated_through'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 })

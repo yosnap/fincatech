@@ -1,7 +1,7 @@
 ---
 phase: 7
 title: "Phase 7: Cargo automático de la hipoteca"
-status: todo
+status: completed
 priority: P1
 effort: 7h
 dependencies: [2]
@@ -72,3 +72,16 @@ El admin configura en el banco el importe y el día de cargo de la hipoteca; cad
 - Purgar un cargo automático avisa en la confirmación de que ese mes no se regenerará.
 - Los candidatos para adoptar excluyen filas en la papelera.
 
+
+## Estado de la implementación (2026-11-08)
+
+Implementado con el flujo del red-team (RT-9/RT-10) y la interacción con la papelera:
+
+- **Migración `0017_melodic_star_brand.sql`:** `mortgage_schedule` (tramos con `effective_from` único), `bank_transactions.mortgage_period` con índice único parcial `where mortgage_period is not null and deleted_at is null`, `finance_settings.mortgage_generated_through`.
+- **`mortgage-core.ts`** (puro, 8 tests): importe por tramo vigente, `chargeDateFor` con recorte a fin de mes, rango sin meses futuros, `planMortgageCharges` (relleno y cron comparten planificador), `findManualCandidates`, `todayInMadrid` con `now` inyectable.
+- **`mortgage-service.ts`:** CRUD de tramos auditado (`mortgage_schedule_*`), `previewBackfill`, `confirmBackfill` (adopción + creación en una sola transacción con advisory lock, rechazo en bloque de ids no candidatos, avance de la marca de agua), `generateDueCharges` para el cron (audit `channel: system`), `assertNoOtherChargeForMonth` para el 409 al restaurar.
+- **Endpoints** (solo admin): `GET/POST /api/bank/mortgage`, `PATCH/DELETE /api/bank/mortgage/[id]`, `GET /api/bank/mortgage/backfill/preview`, `POST /api/bank/mortgage/backfill/confirm`.
+- **Cron:** `server/plugins/mortgage-scheduler.ts` (06:00 Europe/Madrid + una pasada a los 30s del arranque).
+- **UI:** `app/components/bank/MortgageSettings.vue` (tramos + acceso al relleno desde el botón «Hipoteca» de `/banco`), `MortgageBackfillDialog.vue` (meses a crear, candidatos con casillas para adoptar, meses en la papelera), badge «Automático» en `TransactionList.vue`, aviso al editar un cargo automático y nota al purgarlo desde `/admin/trash`.
+- **Tests:** `mortgage-core.test.ts` (unitarios) y `mortgage-service.integration.test.ts` (Postgres real): relleno idempotente, adopción sin duplicar importe, rechazo de ids no candidatos, mes en la papelera no recreado y cron respetando día de cargo y marca de agua.
+- **Pendiente manual:** copia de seguridad de la BD de producción antes de desplegar y revisar la vista previa del relleno en real antes de confirmar (los candidatos manuales dependen de los importes/descripciones existentes).

@@ -3,6 +3,7 @@ import { db, type TxExecutor } from '../db/client'
 import { bankTransactions, contributions, financeSettings, paymentProofs, users } from '../db/schema'
 import { writeAuditLog } from '../utils/audit'
 import { assertNotTrashed, notDeleted } from '../utils/soft-delete'
+import { assertNoOtherChargeForMonth } from './mortgage-service'
 import { deleteFile } from './storage'
 
 export const BANK_DIRECTIONS = ['deposit', 'withdrawal'] as const
@@ -112,6 +113,11 @@ export async function updateTransaction(input: UpdateTransactionInput) {
       }
     }
 
+    // Editar un cargo automático de la hipoteca lo convierte en manual (RT-10): el relleno y
+    // el cron nunca vuelven a tocarlo ni lo recrean si se borra. El servicio lo devuelve para
+    // que la UI avise.
+    const mortgagePeriodCleared = transaction.mortgagePeriod
+
     const [updated] = await tx.update(bankTransactions)
       .set({
         date: input.date,
@@ -120,7 +126,8 @@ export async function updateTransaction(input: UpdateTransactionInput) {
         description: input.description,
         category: input.category,
         hasProof: transaction.hasProof,
-        registeredBy: transaction.registeredBy
+        registeredBy: transaction.registeredBy,
+        mortgagePeriod: null
       })
       .where(eq(bankTransactions.id, transaction.id))
       .returning()
@@ -132,11 +139,12 @@ export async function updateTransaction(input: UpdateTransactionInput) {
       entityId: transaction.id,
       metadata: {
         previous: { date: transaction.date, direction: transaction.direction, amountCents: transaction.amountCents, description: transaction.description, category: transaction.category },
-        next: { date: input.date, direction: input.direction, amountCents: input.amountCents, description: input.description, category: input.category }
+        next: { date: input.date, direction: input.direction, amountCents: input.amountCents, description: input.description, category: input.category },
+        mortgagePeriodCleared
       }
     }, tx)
 
-    return updated
+    return { transaction: updated!, mortgagePeriodCleared }
   })
 }
 
@@ -245,6 +253,10 @@ export async function restoreTransactionCore(tx: TxExecutor, input: TrashTransac
   }
   if (!transaction.deletedAt) {
     return transaction
+  }
+  // Papelera de la fase 8: un mes solo puede tener un cargo automático vivo.
+  if (transaction.mortgagePeriod) {
+    await assertNoOtherChargeForMonth(transaction.mortgagePeriod, transaction.id)
   }
 
   const [updated] = await tx.update(bankTransactions)

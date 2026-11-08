@@ -38,6 +38,8 @@ export default defineEventHandler(async (event) => {
       amountCents: t.amountCents,
       direction: t.direction,
       date: t.date,
+      // Mes del cargo automático de la hipoteca: avisa de que purgarlo no lo regenera.
+      mortgagePeriod: t.mortgagePeriod,
       discardedAt: t.deletedAt
     })),
     contributions: trashedContributions.map(c => ({
