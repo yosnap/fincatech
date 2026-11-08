@@ -1,8 +1,10 @@
-import { and, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import { db, type TxExecutor } from '../db/client'
-import { ideas, proposals, quotes, votes } from '../db/schema'
+import { debts, expenses, ideas, media, proposals, quotes, referenceLinks, tasks, users, votes } from '../db/schema'
 import { writeAuditLog } from '../utils/audit'
+import { resolveMediaUrls } from '../utils/media-urls'
 import { getPgErrorCode } from '../utils/pg-error'
+import { getUserNameMap } from '../utils/user-names'
 
 export type IdeaStatus = 'new' | 'discussion' | 'promoted' | 'discarded'
 export type ProposalStatus = 'voting' | 'approved' | 'cancelled'
@@ -226,4 +228,149 @@ export async function cancelProposal(input: CancelProposalInput) {
 
     return updated
   })
+}
+
+interface DeleteProposalInput {
+  proposalId: string
+  actorId: string
+}
+
+// Borrado definitivo (solo Admin). Dos casos válidos:
+// - Cancelada: nunca llegó a ejecutarse, no generó derrama — borrado simple.
+// - Aprobada: SOLO si nadie ha pagado ni confirmado nada de la derrama que se generó al
+//   aprobarla (todas sus deudas siguen 'pending', bloqueado con FOR UPDATE para que un pago
+//   concurrente no se cuele entre el check y el borrado). Si algún propietario ya adelantó
+//   dinero, se bloquea para siempre: borrar destruiría un registro financiero real.
+//   Al borrar una aprobada se elimina también la derrama (gasto+deudas en cascada), la tarea
+//   de ejecución generada junto a ella, y los enlaces de referencia de ambas (tabla
+//   polimórfica sin FK real). Cotizaciones, votos y fotos de la propuesta se borran en
+//   cascada a nivel de FK.
+export async function deleteProposalPermanently(input: DeleteProposalInput) {
+  return db.transaction(async (tx) => {
+    const [proposal] = await tx.select().from(proposals).where(eq(proposals.id, input.proposalId)).for('update')
+    if (!proposal) {
+      throw createError({ statusCode: 404, statusMessage: 'Propuesta no encontrada' })
+    }
+    if (proposal.status !== 'cancelled' && proposal.status !== 'approved') {
+      throw createError({ statusCode: 400, statusMessage: 'Solo se puede eliminar definitivamente una propuesta cancelada o aprobada' })
+    }
+
+    let removedExpenseId: string | null = null
+    let removedTaskId: string | null = null
+
+    if (proposal.status === 'approved') {
+      // Sin filtro de papelera a propósito (RT8-9): la derrama de esta propuesta se encuentra
+      // aunque esté en la papelera. La propuesta se elimina definitivamente y su rastro debe
+      // desaparecer del todo, papelera incluida.
+      const [expense] = await tx.select().from(expenses).where(eq(expenses.originProposalId, input.proposalId)).for('update')
+      if (expense) {
+        // Lock TODAS las deudas de la derrama, sin filtrar por status: si filtráramos por
+        // "status != pending" aquí, una fila que sigue 'pending' en este instante no quedaría
+        // bloqueada, y un markDebtPaid concurrente (expense-service.ts) podría colarse justo
+        // entre este check y el DELETE de más abajo, dejando un pago real destruido por la
+        // cascada de debts.expenseId. Bloqueando todas las filas primero, cualquier
+        // markDebtPaid concurrente sobre la misma deuda queda serializado por Postgres:
+        // o ya se ejecutó antes (y aquí se detecta como insegura) o espera a que esta
+        // transacción termine.
+        const allDebts = await tx.select().from(debts).where(eq(debts.expenseId, expense.id)).for('update')
+        const unsafeDebt = allDebts.filter(d => d.status !== 'pending')
+        if (unsafeDebt.length) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: 'No se puede eliminar: al menos un propietario ya pagó o confirmó su parte de la derrama generada por esta propuesta'
+          })
+        }
+        await tx.delete(expenses).where(eq(expenses.id, expense.id))
+        removedExpenseId = expense.id
+        // Si la derrama estaba en la papelera, además del borrado físico queda constancia del
+        // purgado con su origen, para no perder el rastro de por qué desapareció.
+        if (expense.deletedAt) {
+          await writeAuditLog({
+            actorId: input.actorId,
+            action: 'expense_purged',
+            entityType: 'expense',
+            entityId: expense.id,
+            metadata: { description: expense.description, amountCents: expense.amountCents, cascadeFrom: input.proposalId }
+          }, tx)
+        }
+      }
+
+      const [task] = await tx.select().from(tasks).where(eq(tasks.originProposalId, input.proposalId)).for('update')
+      if (task) {
+        await tx.delete(referenceLinks).where(and(eq(referenceLinks.entityType, 'task'), eq(referenceLinks.entityId, task.id)))
+        await tx.delete(tasks).where(eq(tasks.id, task.id))
+        removedTaskId = task.id
+      }
+    }
+
+    await tx.delete(referenceLinks).where(and(eq(referenceLinks.entityType, 'proposal'), eq(referenceLinks.entityId, input.proposalId)))
+    await tx.delete(proposals).where(eq(proposals.id, input.proposalId))
+
+    await writeAuditLog({
+      actorId: input.actorId,
+      action: 'proposal_deleted_permanently',
+      entityType: 'proposal',
+      entityId: input.proposalId,
+      metadata: { title: proposal.title, removedExpenseId, removedTaskId }
+    }, tx)
+  })
+
+  return { success: true as const }
+}
+
+// ---- Lecturas compartidas con el servidor MCP (fase 4) ----
+
+// Las canceladas quedan ocultas del listado normal para TODOS los roles (incluido Admin) —
+// solo visibles en la papelera.
+export async function listProposals() {
+  const rows = await db.query.proposals.findMany({
+    where: ne(proposals.status, 'cancelled'),
+    orderBy: [desc(proposals.createdAt)]
+  })
+  const nameMap = await getUserNameMap(rows.map(p => p.authorId))
+  return rows.map(p => ({ ...p, authorName: nameMap.get(p.authorId) ?? p.authorId }))
+}
+
+// Detalle con cotizaciones, votos y fotos. `voterId` es quien consulta (para marcar su voto);
+// el total de votantes elegibles se calcula sobre admin/owner activos, igual que el alta de
+// participantes.
+export async function getProposalDetail(proposalId: string, voterId: string | null) {
+  const proposal = await db.query.proposals.findFirst({ where: eq(proposals.id, proposalId) })
+  if (!proposal) {
+    throw createError({ statusCode: 404, statusMessage: 'Propuesta no encontrada' })
+  }
+
+  const proposalQuotes = await db.query.quotes.findMany({ where: eq(quotes.proposalId, proposalId) })
+
+  const tally = await db.select({ quoteId: votes.quoteId, count: sql<number>`count(*)::int` })
+    .from(votes)
+    .where(eq(votes.proposalId, proposalId))
+    .groupBy(votes.quoteId)
+  const tallyMap = Object.fromEntries(tally.map(t => [t.quoteId, t.count]))
+
+  const myVote = voterId
+    ? await db.query.votes.findFirst({ where: and(eq(votes.proposalId, proposalId), eq(votes.voterId, voterId)) })
+    : undefined
+
+  const photos = await db.query.media.findMany({
+    where: eq(media.proposalId, proposalId),
+    orderBy: (m, { desc }) => [desc(m.createdAt)]
+  })
+
+  const nameMap = await getUserNameMap([proposal.authorId])
+
+  const votedCount = tally.reduce((sum, t) => sum + t.count, 0)
+  const eligibleVoters = await db.select({ count: sql<number>`count(*)::int` })
+    .from(users)
+    .where(and(eq(users.banned, false), inArray(users.role, ['admin', 'owner'])))
+  const totalEligibleVoters = eligibleVoters[0]?.count ?? 0
+
+  return {
+    proposal: { ...proposal, authorName: nameMap.get(proposal.authorId) ?? proposal.authorId },
+    quotes: proposalQuotes.map(q => ({ ...q, voteCount: tallyMap[q.id] ?? 0 })),
+    myVoteQuoteId: myVote?.quoteId ?? null,
+    media: await resolveMediaUrls(photos),
+    votedCount,
+    totalEligibleVoters
+  }
 }

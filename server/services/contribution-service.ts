@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { db, type TxExecutor } from '../db/client'
 import { bankTransactions, contributions, paymentProofs, users } from '../db/schema'
 import { writeAuditLog } from '../utils/audit'
@@ -320,7 +320,7 @@ export async function linkContribution(input: LinkContributionInput) {
       metadata: { bankTransactionId: transaction.id }
     }, tx)
 
-    return updated
+    return updated!
   })
 }
 
@@ -355,7 +355,7 @@ export async function unlinkContribution(input: UnlinkContributionInput) {
       metadata: { previousBankTransactionId: contribution.bankTransactionId }
     }, tx)
 
-    return updated
+    return updated!
   })
 }
 
@@ -462,7 +462,7 @@ export async function updateContribution(input: UpdateContributionInput) {
       }
     }, tx)
 
-    return updated
+    return updated!
   })
 }
 
@@ -655,6 +655,55 @@ export async function purgeContribution(input: { contributionId: string, actorId
 
     return { contributionId: contribution.id }
   })
+}
+
+export interface ContributionFilters {
+  memberId?: string
+  type?: string
+  // 'YYYY-MM-DD' (fecha del aporte), ambos inclusive.
+  from?: string
+  to?: string
+}
+
+// Listado de aportes vivos con filtros: lo usan el endpoint `/api/bank/contributions` y la
+// herramienta `listar_aportes` del MCP (misma consulta, misma regla de papelera).
+export async function listContributions(filters: ContributionFilters = {}) {
+  const conditions = [notDeleted(contributions)]
+  if (filters.memberId) conditions.push(eq(contributions.memberId, filters.memberId))
+  if (filters.type) conditions.push(eq(contributions.type, filters.type))
+  if (filters.from) conditions.push(gte(contributions.date, filters.from))
+  if (filters.to) conditions.push(lte(contributions.date, filters.to))
+
+  return db.select().from(contributions)
+    .where(and(...conditions))
+    .orderBy(asc(contributions.date), asc(contributions.createdAt))
+}
+
+export interface PendingQuotaCell {
+  memberId: string
+  memberName: string
+  period: string
+}
+
+// Cuotas que faltan por pagar (meses del grid sin aporte de ese miembro). Es lo que responde
+// la herramienta `cuotas_pendientes`: no incluye meses futuros, porque el grid no los genera.
+export async function getPendingQuotas(): Promise<{ settings: FinanceSettings, pending: PendingQuotaCell[] }> {
+  const grid = await getQuotaGrid()
+  const nameById = new Map(grid.activeMembers.map(member => [member.id, member.name]))
+  const pending: PendingQuotaCell[] = []
+
+  for (const month of grid.months) {
+    for (const cell of month.cells) {
+      if (cell.contribution) continue
+      pending.push({
+        memberId: cell.memberId,
+        memberName: nameById.get(cell.memberId) ?? cell.memberId,
+        period: month.period
+      })
+    }
+  }
+
+  return { settings: grid.settings, pending }
 }
 
 export interface QuotaGrid {

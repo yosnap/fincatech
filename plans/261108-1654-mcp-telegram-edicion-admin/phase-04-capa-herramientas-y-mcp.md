@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "Phase 4: Capa de herramientas y servidor MCP"
-status: todo
+status: in-progress
 priority: P1
 effort: 24h
 dependencies: [2, 3]

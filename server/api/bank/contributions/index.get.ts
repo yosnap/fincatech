@@ -1,6 +1,7 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, inArray } from 'drizzle-orm'
 import { db } from '../../../db/client'
-import { bankTransactions, contributions, users } from '../../../db/schema'
+import { bankTransactions, users } from '../../../db/schema'
+import { listContributions } from '../../../services/contribution-service'
 import { requireRole } from '../../../utils/rbac'
 import { notDeleted } from '../../../utils/soft-delete'
 
@@ -12,9 +13,7 @@ export default defineEventHandler(async (event) => {
   const canSeeAll = actor.role === 'admin' || actor.role === 'owner'
 
   // Lo que está en la papelera no se lista (fase 8): vive en /admin/trash.
-  const rows = canSeeAll
-    ? await db.select().from(contributions).where(notDeleted(contributions))
-    : await db.select().from(contributions).where(and(eq(contributions.memberId, actor.id), notDeleted(contributions)))
+  const rows = await listContributions(canSeeAll ? {} : { memberId: actor.id })
 
   // Enriquecer con nombres (miembro y quién lo registró) y con el ingreso vinculado para
   // mostrar el estado de depósito sin N+1 consultas por fila.

@@ -17,6 +17,7 @@ interface Task {
   description: string | null
   status: string
   priority: string
+  dueDate: string | null
   createdBy: string
   assigneeId: string | null
   discardedAt: string | null
@@ -103,6 +104,7 @@ async function deletePhoto(mediaId: string) {
 }
 
 const busy = ref(false)
+const editOpen = ref(false)
 
 function toGalleryPhoto(item: MediaItem) {
   return { id: item.id, url: item.url, createdAt: item.createdAt, canDelete: canDeletePhoto(item) }
@@ -212,6 +214,15 @@ async function setStatus(status: string) {
             Completado
           </UButton>
           <UButton
+            size="sm"
+            variant="outline"
+            icon="i-lucide-pencil"
+            :disabled="busy"
+            @click="editOpen = true"
+          >
+            Editar
+          </UButton>
+          <UButton
             v-if="canDiscard"
             size="sm"
             color="error"
@@ -272,5 +283,11 @@ async function setStatus(status: string) {
     </div>
 
     <ReferenceLinksCard :base-url="`/api/tasks/${route.params.id}`" />
+
+    <TaskEditDialog
+      v-model:open="editOpen"
+      :task="data.task"
+      @saved="refresh"
+    />
   </div>
 </template>

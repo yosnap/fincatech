@@ -1,9 +1,9 @@
 import { and, eq, inArray } from 'drizzle-orm'
-import { db } from '../db/client'
+import { db, type TxExecutor } from '../db/client'
 import { debts, expenses, paymentProofs, users } from '../db/schema'
 import { writeAuditLog } from '../utils/audit'
 import { isFutureMadridDate, todayInMadrid } from '../utils/madrid-date'
-import { assertNotTrashed } from '../utils/soft-delete'
+import { assertNotTrashed, listLiveDebts, listLiveDebtsByExpense, listLiveExpenses } from '../utils/soft-delete'
 import { splitExpense } from './debt-splitter'
 import { enqueueNotification } from './notification-service'
 import { deleteFile } from './storage'
@@ -233,14 +233,86 @@ export async function confirmDebtReceipt(input: ConfirmDebtReceiptInput) {
     }
     assertNotTrashed(expense, 'El gasto está en la papelera: no se puede confirmar la cuota')
 
-    const siblingDebts = await tx.select({ status: debts.status }).from(debts).where(eq(debts.expenseId, debt.expenseId))
-    const confirmedCount = siblingDebts.filter(d => d.status === 'confirmed').length
-    const expenseStatus: ExpenseStatus = confirmedCount === siblingDebts.length
-      ? 'settled'
-      : confirmedCount > 0 ? 'partial' : 'pending'
-    await tx.update(expenses).set({ status: expenseStatus, updatedAt: new Date() }).where(eq(expenses.id, debt.expenseId))
+    await recalculateExpenseStatus(tx, debt.expenseId)
 
     return updated
+  })
+}
+
+// Recalcula el estado agregado del gasto a partir de sus deudas. El llamador ya tiene el gasto
+// bloqueado con FOR UPDATE (si no, dos deudas distintas del mismo gasto confirmadas a la vez
+// podrían dejar el estado fijado en 'partial' para siempre).
+async function recalculateExpenseStatus(tx: TxExecutor, expenseId: string) {
+  const siblingDebts = await tx.select({ status: debts.status }).from(debts).where(eq(debts.expenseId, expenseId))
+  const confirmedCount = siblingDebts.filter(d => d.status === 'confirmed').length
+  const expenseStatus: ExpenseStatus = confirmedCount === siblingDebts.length
+    ? 'settled'
+    : confirmedCount > 0 ? 'partial' : 'pending'
+  await tx.update(expenses).set({ status: expenseStatus, updatedAt: new Date() }).where(eq(expenses.id, expenseId))
+}
+
+interface AdminSettleDebtInput {
+  debtId: string
+  actorId: string
+  actorRole: string
+}
+
+// Liquidar en nombre de otro (RT-14, decisión del usuario): el Admin da por pagada la deuda de
+// un miembro que le pagó en efectivo o que se lo pidió. Nunca se suplanta al deudor: el
+// `actorId` del audit es el Admin y el deudor original va en `metadata.onBehalfOf`. La deuda
+// queda CONFIRMADA (el Admin es quien confirma la recepción) y el gasto recalcula su estado.
+export async function adminSettleDebt(input: AdminSettleDebtInput) {
+  if (input.actorRole !== 'admin') {
+    throw createError({ statusCode: 403, statusMessage: 'Solo el Admin puede liquidar la deuda de otra persona' })
+  }
+
+  return db.transaction(async (tx) => {
+    // Bloquea deuda → gasto, como confirmDebtReceipt. Las mutaciones del gasto (papelera,
+    // purga, participantes) bloquean gasto → deudas: un cruce concurrente puede acabar en
+    // deadlock y Postgres aborta una de las dos (la operación devuelve error y se reintenta).
+    const [debt] = await tx.select().from(debts).where(eq(debts.id, input.debtId)).for('update')
+    if (!debt) {
+      throw createError({ statusCode: 404, statusMessage: 'Cuota no encontrada' })
+    }
+
+    const [expense] = await tx.select().from(expenses).where(eq(expenses.id, debt.expenseId)).for('update')
+    if (!expense) {
+      throw createError({ statusCode: 404, statusMessage: 'Gasto no encontrado' })
+    }
+    assertNotTrashed(expense, 'El gasto está en la papelera: no se puede liquidar la cuota')
+
+    // Idempotente: si ya estaba confirmada, no se reescribe quién ni cuándo.
+    if (debt.status === 'confirmed') {
+      return debt
+    }
+
+    const [updated] = await tx.update(debts)
+      .set({
+        status: 'confirmed',
+        paidAt: debt.paidAt ?? new Date(),
+        confirmedAt: new Date(),
+        confirmedBy: input.actorId,
+        updatedAt: new Date()
+      })
+      .where(eq(debts.id, debt.id))
+      .returning()
+
+    await writeAuditLog({
+      actorId: input.actorId,
+      action: 'debt_settled_on_behalf',
+      entityType: 'debt',
+      entityId: debt.id,
+      metadata: {
+        expenseId: debt.expenseId,
+        onBehalfOf: debt.debtorId,
+        previousStatus: debt.status,
+        amountCents: debt.amountCents
+      }
+    }, tx)
+
+    await recalculateExpenseStatus(tx, debt.expenseId)
+
+    return updated!
   })
 }
 
@@ -518,7 +590,7 @@ export async function updateExpenseParticipants(input: UpdateExpenseParticipants
       }, tx)
     }
 
-    return updated
+    return updated!
   })
 }
 
@@ -605,6 +677,63 @@ export async function reassignExpenseCreator(input: ReassignExpenseCreatorInput)
       }, tx)
     }
 
-    return updated
+    return updated!
   })
+}
+
+// ---- Lecturas compartidas con el servidor MCP (fase 4) ----
+
+export interface ExpenseWithDebts {
+  id: string
+  description: string
+  amountCents: number
+  type: string
+  status: string
+  hasProof: boolean
+  createdBy: string
+  expenseDate: string
+  participantCount: number
+  debts: DebtRow[]
+}
+
+type DebtRow = typeof debts.$inferSelect
+
+// Gastos vivos con sus deudas vivas. `limit` protege el contexto del modelo: el libro de una
+// finca cabe de sobra, pero nunca se manda la tabla entera a un proveedor externo.
+export async function listExpensesWithDebts(limit = 50): Promise<ExpenseWithDebts[]> {
+  const [expenses, allDebts] = await Promise.all([listLiveExpenses(), listLiveDebts()])
+  return expenses
+    .sort((a, b) => b.expenseDate.localeCompare(a.expenseDate) || b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, limit)
+    .map(expense => ({
+      id: expense.id,
+      description: expense.description,
+      amountCents: expense.amountCents,
+      type: expense.type,
+      status: expense.status,
+      hasProof: expense.hasProof,
+      createdBy: expense.createdBy,
+      expenseDate: expense.expenseDate,
+      participantCount: Array.isArray(expense.participantSnapshot) ? expense.participantSnapshot.length : 0,
+      debts: allDebts.filter(debt => debt.expenseId === expense.id)
+    }))
+}
+
+// Deuda suelta por id (la usa la herramienta `marcar_deuda_pagada` para decidir si la cuota es
+// del propio Admin o hay que liquidarla en nombre de otro — RT-14).
+export async function getDebtRow(debtId: string) {
+  const debt = await db.query.debts.findFirst({ where: eq(debts.id, debtId) })
+  if (!debt) {
+    throw createError({ statusCode: 404, statusMessage: 'Cuota no encontrada' })
+  }
+  return debt
+}
+
+// Detalle de un gasto con sus deudas vivas (lo que ve el Admin y la herramienta `ver_gasto`).
+export async function getExpenseDetail(expenseId: string) {
+  const expense = await db.query.expenses.findFirst({ where: eq(expenses.id, expenseId) })
+  if (!expense) {
+    throw createError({ statusCode: 404, statusMessage: 'Gasto no encontrado' })
+  }
+  return { expense, debts: await listLiveDebtsByExpense(expenseId) }
 }

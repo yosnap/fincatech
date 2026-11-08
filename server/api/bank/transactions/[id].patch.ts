@@ -1,21 +1,6 @@
-import { z } from 'zod'
-import { isValidCalendarDate } from '../../../services/bank-core'
 import { updateTransaction } from '../../../services/bank-service'
 import { requireRole } from '../../../utils/rbac'
-
-const MAX_AMOUNT_CENTS = 100_000_000
-
-const bodySchema = z.object({
-  date: z.string().refine(isValidCalendarDate, 'Fecha de calendario inválida'),
-  direction: z.enum(['deposit', 'withdrawal']),
-  amountCents: z.number().int().positive().max(MAX_AMOUNT_CENTS),
-  description: z.string().min(1),
-  // null = sin categoría. Solo depósitos: un aporte de miembro no lleva categoría.
-  category: z.enum(['hacienda', 'ayuntamiento', 'impuestos', 'iva', 'otro']).nullable()
-}).refine(body => body.direction === 'deposit' || body.category === null, {
-  message: 'Las salidas no llevan categoría',
-  path: ['category']
-})
+import { bankTransactionFieldsSchema } from '../../../validation/finance'
 
 // Edición de movimiento bancario, solo Admin (el tesorero corrige errores de registro).
 // El servicio impide romper la conciliación: movimientos con aportes vinculados deben
@@ -27,7 +12,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Falta id de movimiento' })
   }
 
-  const parsed = bodySchema.safeParse(await readBody(event))
+  const parsed = bankTransactionFieldsSchema.safeParse(await readBody(event))
   if (!parsed.success) {
     throw createError({ statusCode: 400, statusMessage: 'Datos inválidos', data: parsed.error.flatten() })
   }

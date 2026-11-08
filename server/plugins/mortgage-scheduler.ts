@@ -1,5 +1,6 @@
 import cron from 'node-cron'
 import { generateDueCharges } from '../services/mortgage-service'
+import { runWithChannel } from '../utils/audit-channel'
 
 // Cron de la hipoteca (fase 7): cada día a las 06:00 de Madrid crea el cargo del mes si ya
 // llegó su día de cargo. `generateDueCharges` es idempotente por marca de agua + índice único
@@ -11,7 +12,8 @@ export default defineNitroPlugin(() => {
 
   // Arranque: recupera lo perdido. Con retardo para no competir con las migraciones/seed.
   setTimeout(() => {
-    generateDueCharges()
+    // Canal `system` en la auditoría: el cargo lo creó el cron, no una persona.
+    runWithChannel('system', () => generateDueCharges())
       .then((result) => {
         if (result.created.length > 0) {
           console.log('[mortgage-scheduler] cargos generados al arrancar:', result.created)
@@ -22,7 +24,7 @@ export default defineNitroPlugin(() => {
 
   const task = cron.schedule('0 6 * * *', async () => {
     try {
-      const result = await generateDueCharges()
+      const result = await runWithChannel('system', () => generateDueCharges())
       if (result.created.length > 0) {
         console.log('[mortgage-scheduler] cargos generados:', result.created)
       }
