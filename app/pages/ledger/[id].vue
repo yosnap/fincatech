@@ -150,9 +150,9 @@ const deleting = ref(false)
 
 async function onDeleteExpense() {
   const confirmed = await useConfirmDialog()({
-    title: 'Eliminar gasto',
-    description: 'No se puede deshacer. Solo es posible si ninguna cuota tiene pagos registrados.',
-    confirmLabel: 'Eliminar',
+    title: 'Mover gasto a la papelera',
+    description: 'Solo es posible si ninguna cuota tiene pagos registrados. Podrás restaurarlo desde la papelera y su justificante se conserva.',
+    confirmLabel: 'Mover a la papelera',
     color: 'error'
   })
   if (!confirmed) return
@@ -161,11 +161,11 @@ async function onDeleteExpense() {
   try {
     const deleteUrl: string = `/api/expenses/${route.params.id}`
     await $fetch(deleteUrl, { method: 'DELETE' })
-    toast.add({ title: 'Gasto eliminado', color: 'success' })
+    toast.add({ title: 'Gasto movido a la papelera', color: 'success' })
     await navigateTo(backTo.value)
   } catch (error) {
     const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
-    toast.add({ title: statusMessage ?? 'No se pudo eliminar el gasto', color: 'error' })
+    toast.add({ title: statusMessage ?? 'No se pudo mover el gasto a la papelera', color: 'error' })
   } finally {
     deleting.value = false
   }

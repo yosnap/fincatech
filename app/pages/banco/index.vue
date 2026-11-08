@@ -88,19 +88,19 @@ function onAttachProof(transactionId: string) {
 
 async function onDelete(transaction: TransactionItem) {
   const confirmed = await confirm({
-    title: 'Eliminar movimiento',
-    description: `Se eliminará "${transaction.description}" (${formatEuros(transaction.amountCents)}). Los aportes vinculados quedarán pendientes de depósito.`,
-    confirmLabel: 'Eliminar',
+    title: 'Mover a la papelera',
+    description: `"${transaction.description}" (${formatEuros(transaction.amountCents)}) dejará de contar en el saldo. Podrás restaurarlo desde la papelera y su justificante se conserva.`,
+    confirmLabel: 'Mover a la papelera',
     color: 'error'
   })
   if (!confirmed) return
 
   try {
     await $fetch(`/api/bank/transactions/${transaction.id}`, { method: 'DELETE' })
-    toast.add({ title: 'Movimiento eliminado', color: 'success' })
+    toast.add({ title: 'Movimiento movido a la papelera', color: 'success' })
     await refreshAll()
   } catch {
-    toast.add({ title: 'No se pudo eliminar el movimiento', color: 'error' })
+    toast.add({ title: 'No se pudo mover el movimiento a la papelera', color: 'error' })
   }
 }
 
