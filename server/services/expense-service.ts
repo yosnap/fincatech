@@ -2,6 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '../db/client'
 import { debts, expenses, paymentProofs, users } from '../db/schema'
 import { writeAuditLog } from '../utils/audit'
+import { isFutureMadridDate, todayInMadrid } from '../utils/madrid-date'
 import { assertNotTrashed } from '../utils/soft-delete'
 import { splitExpense } from './debt-splitter'
 import { enqueueNotification } from './notification-service'
@@ -20,6 +21,9 @@ interface CreateExpenseInput {
   type: ExpenseType
   participantIds: string[]
   hasProof: boolean
+  // Fecha del gasto (cuándo se pagó). Sin ella se usa hoy en Madrid: la fecha de alta y la del
+  // gasto coinciden en el caso normal, y el admin puede corregirla después.
+  expenseDate?: string
   // Impuestos (IVA) ya incluidos en amountCents — informativo, extraído por OCR o a mano.
   taxCents?: number
   // Solo presentes cuando el gasto viene de la extracción OCR (Fase 4).
@@ -49,6 +53,7 @@ export async function createExpense(input: CreateExpenseInput) {
       hasProof: input.hasProof,
       status: isBankReceipt || shares.length === 1 ? 'settled' : 'pending',
       participantSnapshot: shares,
+      expenseDate: input.expenseDate ?? todayInMadrid(),
       taxCents: input.taxCents ?? null,
       ocrConfidence: input.ocrConfidence ?? null,
       ocrCostUsd: input.ocrCostUsd ?? null
@@ -394,6 +399,44 @@ export async function purgeExpense(input: DeleteExpenseInput) {
   }
 
   return { expenseId: result.expenseId }
+}
+
+interface UpdateExpenseDateInput {
+  expenseId: string
+  actorId: string
+  // 'YYYY-MM-DD'
+  expenseDate: string
+}
+
+// Cambiar la fecha del gasto (solo Admin, fase 3): corrige un ticket registrado con la fecha
+// equivocada. No toca deudas, snapshot ni importes — solo el dato de fecha, que es el que
+// usan listados, exportación, estadísticas y liquidación.
+export async function updateExpenseDate(input: UpdateExpenseDateInput) {
+  return db.transaction(async (tx) => {
+    const [expense] = await tx.select().from(expenses).where(eq(expenses.id, input.expenseId)).for('update')
+    if (!expense) {
+      throw createError({ statusCode: 404, statusMessage: 'Gasto no encontrado' })
+    }
+    assertNotTrashed(expense, 'El gasto está en la papelera: restáuralo antes de cambiar la fecha')
+    if (isFutureMadridDate(input.expenseDate)) {
+      throw createError({ statusCode: 400, statusMessage: 'La fecha del gasto no puede ser futura' })
+    }
+
+    const [updated] = await tx.update(expenses)
+      .set({ expenseDate: input.expenseDate, updatedAt: new Date() })
+      .where(eq(expenses.id, expense.id))
+      .returning()
+
+    await writeAuditLog({
+      actorId: input.actorId,
+      action: 'expense_date_updated',
+      entityType: 'expense',
+      entityId: expense.id,
+      metadata: { before: expense.expenseDate, after: input.expenseDate }
+    }, tx)
+
+    return updated!
+  })
 }
 
 interface UpdateExpenseParticipantsInput {

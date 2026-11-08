@@ -37,6 +37,8 @@ interface ExpenseDetail {
   status: string
   createdBy?: string
   createdByName: string
+  // Fecha del gasto ('YYYY-MM-DD'): la que cuenta para listados, exportación y liquidación.
+  expenseDate: string
   createdAt: string
   participantSnapshot?: ParticipantShare[]
   participants?: ParticipantWithName[]
@@ -217,6 +219,36 @@ async function saveParticipants() {
   }
 }
 
+// Cambiar la fecha del gasto (solo Admin, fase 3): corrige un ticket con la fecha mal puesta
+// sin tocar importes, deudas ni participantes.
+const editingDate = ref(false)
+const savingDate = ref(false)
+const selectedDate = ref('')
+
+function openDateEditor() {
+  selectedDate.value = data.value?.expense.expenseDate ?? todayInMadridClient()
+  editingDate.value = true
+}
+
+async function saveDate() {
+  if (!selectedDate.value) return
+  savingDate.value = true
+  try {
+    await $fetch(`/api/expenses/${route.params.id}/date`, {
+      method: 'PATCH',
+      body: { date: selectedDate.value }
+    })
+    editingDate.value = false
+    await refresh()
+    toast.add({ title: 'Fecha del gasto actualizada', color: 'success' })
+  } catch (error) {
+    const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
+    toast.add({ title: statusMessage ?? 'No se pudo cambiar la fecha', color: 'error' })
+  } finally {
+    savingDate.value = false
+  }
+}
+
 const editingCreator = ref(false)
 const savingCreator = ref(false)
 const selectedCreatorId = ref<string>('')
@@ -379,6 +411,44 @@ async function saveCreator() {
         {{ data.expense.hasProof ? 'Con comprobante' : 'Sin comprobante' }} ·
         dado de alta por {{ data.expense.createdByName }}
       </p>
+      <p class="text-sm">
+        Fecha del gasto:
+        <span class="font-medium">{{ new Date(`${data.expense.expenseDate}T00:00:00`).toLocaleDateString('es-ES') }}</span>
+        <UButton
+          v-if="currentUserRole === 'admin'"
+          size="xs"
+          variant="link"
+          class="ml-1 px-1"
+          @click="openDateEditor"
+        >
+          Cambiar fecha
+        </UButton>
+      </p>
+      <div
+        v-if="editingDate"
+        class="flex items-end gap-2"
+      >
+        <UInput
+          v-model="selectedDate"
+          type="date"
+          :max="todayInMadridClient()"
+        />
+        <UButton
+          size="sm"
+          :loading="savingDate"
+          @click="saveDate"
+        >
+          Guardar
+        </UButton>
+        <UButton
+          size="sm"
+          color="neutral"
+          variant="outline"
+          @click="editingDate = false"
+        >
+          Cancelar
+        </UButton>
+      </div>
       <UButton
         v-if="canSeeExpenseProof && data.expense.hasStoredProof"
         size="xs"

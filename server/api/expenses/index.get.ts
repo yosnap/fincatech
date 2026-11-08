@@ -10,10 +10,11 @@ import { getUserNameMap } from '../../utils/user-names'
 export default defineEventHandler(async (event) => {
   const user = requireRole(event, ['admin', 'owner', 'guest'])
 
-  // Lo que está en la papelera no se lista en el libro de gastos (fase 8).
+  // Lo que está en la papelera no se lista en el libro de gastos (fase 8). Orden por la FECHA
+  // DEL GASTO (no la de alta): el libro cuenta cuándo se pagó.
   const rows = await db.query.expenses.findMany({
     where: notDeleted(expenses),
-    orderBy: [desc(expenses.createdAt)]
+    orderBy: [desc(expenses.expenseDate), desc(expenses.createdAt)]
   })
   const nameMap = await getUserNameMap(rows.map(e => e.createdBy))
 
@@ -33,6 +34,7 @@ export default defineEventHandler(async (event) => {
         hasProof: e.hasProof,
         status: e.status,
         createdByName: nameMap.get(e.createdBy) ?? e.createdBy,
+        expenseDate: e.expenseDate,
         createdAt: e.createdAt,
         participantCount: participantCount(e.participantSnapshot)
       }))
@@ -50,6 +52,7 @@ export default defineEventHandler(async (event) => {
       status: e.status,
       createdBy: e.createdBy,
       createdByName: nameMap.get(e.createdBy) ?? e.createdBy,
+      expenseDate: e.expenseDate,
       createdAt: e.createdAt,
       participantCount: participantCount(e.participantSnapshot),
       debts: allDebts

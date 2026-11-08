@@ -4,8 +4,10 @@ import { z } from 'zod'
 import { db } from '../../db/client'
 import { users } from '../../db/schema'
 import { createExpense } from '../../services/expense-service'
+import { isValidCalendarDate } from '../../services/bank-core'
 import { uploadFile } from '../../services/storage'
 import { matchesDeclaredType } from '../../utils/file-signature'
+import { isFutureMadridDate, todayInMadrid } from '../../utils/madrid-date'
 import { requireRole } from '../../utils/rbac'
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'application/pdf'])
@@ -17,7 +19,9 @@ const fieldsSchema = z.object({
   description: z.string().min(1),
   type: z.enum(['manual', 'bank_receipt']),
   participantIds: z.string().transform(raw => JSON.parse(raw) as unknown).pipe(z.array(z.string().min(1)).min(1)),
-  hasProof: z.enum(['true', 'false']).transform(v => v === 'true')
+  hasProof: z.enum(['true', 'false']).transform(v => v === 'true'),
+  // Fecha del gasto (cuándo se pagó). Opcional: sin ella es hoy en Madrid.
+  date: z.string().refine(isValidCalendarDate, 'Fecha de calendario inválida').optional()
 })
 
 // Solo Admin/Propietario crean gastos (PRD §3.3: el Invitado no puede crear ni editar).
@@ -36,6 +40,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Datos inválidos', data: parsed.error.flatten() })
   }
   const body = parsed.data
+  if (body.date && isFutureMadridDate(body.date)) {
+    throw createError({ statusCode: 400, statusMessage: 'La fecha del gasto no puede ser futura' })
+  }
 
   const file = formData?.find(part => part.name === 'proof')
   let proof: { objectName: string, contentType: string } | undefined
@@ -77,6 +84,7 @@ export default defineEventHandler(async (event) => {
     type: body.type,
     participantIds: body.participantIds,
     hasProof: body.hasProof,
+    expenseDate: body.date ?? todayInMadrid(),
     proof
   })
 

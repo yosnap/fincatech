@@ -2,7 +2,9 @@ import { eq, inArray } from 'drizzle-orm'
 import { db } from '../db/client'
 import { debts, expenses, users } from '../db/schema'
 import { canSeeIndividualDebt, type SessionUser } from '../utils/rbac'
+import { todayInMadrid } from '../utils/madrid-date'
 import { listLiveDebts, listLiveExpenses } from '../utils/soft-delete'
+import { addMonths } from './bank-core'
 
 export interface DebtSummaryItem {
   id: string
@@ -12,6 +14,8 @@ export interface DebtSummaryItem {
   status: string
   counterpartyId: string
   counterpartyName: string
+  // Fecha del gasto ('YYYY-MM-DD'): es la que ordena y fecha la deuda en el panel (RT-12).
+  expenseDate: string
   createdAt: Date
   confirmedAt: Date | null
 }
@@ -61,31 +65,47 @@ export async function getDashboardSummary(user: SessionUser): Promise<DashboardS
       status: debt.status,
       counterpartyId,
       counterpartyName: nameMap.get(counterpartyId) ?? counterpartyId,
+      expenseDate: expenseMap.get(debt.expenseId)?.expenseDate ?? '',
       createdAt: debt.createdAt,
       confirmedAt: debt.confirmedAt
     }
   }
 
+  // Lo más reciente primero por fecha del gasto (la de alta solo desempata).
+  const byExpenseDateDesc = (a: DebtSummaryItem, b: DebtSummaryItem) =>
+    b.expenseDate.localeCompare(a.expenseDate) || b.createdAt.getTime() - a.createdAt.getTime()
+
   const pendingAsDebtor = myDebtsAsDebtor
     .filter(d => d.status !== 'confirmed')
     .map(d => toSummary(d, d.creditorId))
+    .sort(byExpenseDateDesc)
   const pendingAsCreditor = myDebtsAsCreditor
     .filter(d => d.status !== 'confirmed')
     .map(d => toSummary(d, d.debtorId))
+    .sort(byExpenseDateDesc)
   const paidAsDebtor = myDebtsAsDebtor
     .filter(d => d.status === 'confirmed')
     .map(d => toSummary(d, d.creditorId))
+    .sort(byExpenseDateDesc)
   const paidAsCreditor = myDebtsAsCreditor
     .filter(d => d.status === 'confirmed')
     .map(d => toSummary(d, d.debtorId))
+    .sort(byExpenseDateDesc)
 
-  const now = new Date()
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-  const quarterStart = new Date(Date.UTC(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) * 3, 1))
+  // Los agregados se calculan por la FECHA DEL GASTO como texto 'YYYY-MM-DD' (RT-12): sin
+  // conversiones de fecha ni desplazamientos de zona horaria.
+  const today = todayInMadrid()
+  const currentMonth = today.slice(0, 7)
+  const [currentYear, currentMonthNumber] = today.split('-').map(Number)
+  const quarterStart = `${currentYear}-${String(Math.floor((currentMonthNumber! - 1) / 3) * 3 + 1).padStart(2, '0')}-01`
   const allExpenses = await listLiveExpenses()
   const aggregateTotals = {
-    monthCents: allExpenses.filter(e => e.createdAt >= monthStart).reduce((sum, e) => sum + e.amountCents, 0),
-    quarterCents: allExpenses.filter(e => e.createdAt >= quarterStart).reduce((sum, e) => sum + e.amountCents, 0),
+    monthCents: allExpenses
+      .filter(e => e.expenseDate.startsWith(currentMonth))
+      .reduce((sum, e) => sum + e.amountCents, 0),
+    quarterCents: allExpenses
+      .filter(e => e.expenseDate >= quarterStart)
+      .reduce((sum, e) => sum + e.amountCents, 0),
     allTimeCents: allExpenses.reduce((sum, e) => sum + e.amountCents, 0)
   }
 
@@ -120,18 +140,20 @@ const MONTH_LABELS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 's
 export async function getExpenseStatistics(user: SessionUser): Promise<ExpenseStatistics> {
   const allExpenses = await listLiveExpenses()
 
-  const now = new Date()
   // 12 meses en vez de 6: con un año a la vista se aprecia la estacionalidad de la finca
-  // (verano, derramas anuales…) que medio año esconde.
+  // (verano, derramas anuales…) que medio año esconde. Buckets por mes de la FECHA DEL GASTO.
+  const currentMonth = todayInMadrid().slice(0, 7)
   const months = Array.from({ length: 12 }, (_, i) => {
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (5 - i), 1))
-    const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1))
-    return { start, end, key: `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}`, label: `${MONTH_LABELS[start.getUTCMonth()]} ${start.getUTCFullYear()}` }
+    const key = addMonths(currentMonth, i - 11)
+    const [year, monthNumber] = key.split('-').map(Number)
+    return { key, label: `${MONTH_LABELS[monthNumber! - 1]} ${year}` }
   })
   const monthly = months.map(m => ({
     monthKey: m.key,
     label: m.label,
-    totalCents: allExpenses.filter(e => e.createdAt >= m.start && e.createdAt < m.end).reduce((sum, e) => sum + e.amountCents, 0)
+    totalCents: allExpenses
+      .filter(e => e.expenseDate.startsWith(m.key))
+      .reduce((sum, e) => sum + e.amountCents, 0)
   }))
 
   const byTypeMap = new Map<string, { totalCents: number, count: number }>()

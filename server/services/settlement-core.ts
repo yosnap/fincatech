@@ -8,6 +8,9 @@ export interface SettlementLine {
   description: string
   amountCents: number
   status: string
+  // Fecha del gasto ('YYYY-MM-DD'): con ella se ordenan las líneas, no con la fecha de alta
+  // (RT-12), porque lo que importa al liquidar es cuándo se pagó.
+  expenseDate: string
   createdAt: Date
 }
 
@@ -49,11 +52,17 @@ export interface SettlementInputExpense {
   description: string
   createdBy: string
   amountCents: number
+  // 'YYYY-MM-DD'
+  expenseDate: string
 }
 
 export interface SettlementInputUser {
   id: string
   name: string
+}
+
+function byExpenseDate(a: SettlementLine, b: SettlementLine): number {
+  return a.expenseDate.localeCompare(b.expenseDate) || a.createdAt.getTime() - b.createdAt.getTime()
 }
 
 export function computeSettlement(
@@ -96,6 +105,7 @@ export function computeSettlement(
       description: expense.description,
       amountCents: debt.amountCents,
       status: debt.status,
+      expenseDate: expense.expenseDate,
       createdAt: debt.createdAt
     }
     if (debt.creditorId === userId) {
@@ -114,9 +124,10 @@ export function computeSettlement(
       name: nameMap.get(counterpartyId) ?? counterpartyId,
       totalSpentCents: includeSpentTotals ? (spentByCreator.get(counterpartyId) ?? 0) : null,
       theyOweMeCents,
-      theyOweMeLines: entry.theyOweMe.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
+      // Orden por fecha del gasto y, si coinciden, por fecha de alta (determinista, RT-12).
+      theyOweMeLines: [...entry.theyOweMe].sort(byExpenseDate),
       iOweThemCents,
-      iOweThemLines: entry.iOweThem.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
+      iOweThemLines: [...entry.iOweThem].sort(byExpenseDate),
       netCents: theyOweMeCents - iOweThemCents
     }
   })
