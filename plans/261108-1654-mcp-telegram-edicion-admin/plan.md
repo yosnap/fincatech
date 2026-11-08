@@ -76,7 +76,7 @@ El admin necesita corregir datos financieros (aportes duplicados, fechas mal pue
 | 1 | [Diagnóstico y detector de duplicados](./phase-01-start.md) | Completed (RT-6 aplicado; diagnóstico en producción pendiente, requiere acceso a la BD del servidor) |
 | 2 | [Edición de aportes en la web](./phase-02-edicion-aportes-web.md) | Completed |
 | 3 | [Fecha de gastos](./phase-03-fecha-gastos.md) | Completed |
-| 4 | [Capa de herramientas y servidor MCP](./phase-04-capa-herramientas-y-mcp.md) | Pending |
+| 4 | [Capa de herramientas y servidor MCP](./phase-04-capa-herramientas-y-mcp.md) | In progress (implementado y verificado en local; falta el flujo OAuth en navegador) |
 | 5 | [Agente de Telegram](./phase-05-agente-telegram.md) | Pending |
 | 6 | [Activación y despliegue](./phase-06-activacion-y-despliegue.md) | Pending |
 | 7 | [Cargo automático de la hipoteca](./phase-07-cargo-automatico-hipoteca.md) | Completed |
