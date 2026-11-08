@@ -3,7 +3,7 @@ title: "Gestión admin desde Telegram (agente IA + MCP) y edición financiera en
 description: "Servidor MCP remoto dentro de la app con las acciones de finanzas, tareas, ideas y reservas; bot de Telegram con agente Claude que usa esas herramientas (solo admin); edición completa de aportes, fecha de gastos y detector de duplicados en la web."
 status: in-progress
 priority: P1
-effort: 68h
+effort: 72h
 branch: feat/v0.17.0
 tags: [telegram, mcp, ia, claude, finanzas, aportes, gastos, admin]
 blockedBy: []
@@ -28,8 +28,8 @@ El admin necesita corregir datos financieros (aportes duplicados, fechas mal pue
 | Edición web | Fecha y notas de aportes; importe/tipo/período de aportes; fecha de gastos; detector de duplicados |
 | Escrituras desde bot | Confirmación explícita (botones inline) antes de cualquier creación, edición o borrado |
 | Deudas ajenas | El admin puede marcar como pagada la deuda de otro miembro (operación propia auditada «en nombre de»), en web, MCP y bot |
-| Borrado | Movimientos y aportes van a una papelera (borrado lógico) con restaurar y eliminar definitivamente (solo web); petición del usuario 2026-11-08 |
-| Copias de BD | Copia semanal de `finca-db` (domingo 03:00, 8 copias, Local Disk de Easypanel) configurada el 2026-11-08 |
+| Borrado | Movimientos, aportes y gastos van a una papelera (borrado lógico) con restaurar y eliminar definitivamente (solo web); petición del usuario 2026-11-08 |
+| Copias de BD | Copia semanal de `finca-db` (domingo 03:00, 8 copias, Local Disk de Easypanel) configurada el 2026-11-08; pgweb desactivado. Pendiente manual: cerrar el puerto público 5435 (el MCP del panel devuelve 404) y añadir un destino de copia fuera del servidor |
 | Paridad de canales | Toda acción disponible en bot o MCP debe poder hacerse también desde la web como admin (la web nunca queda por detrás). La fase 4 incluye una matriz herramienta → pantalla web y cubre los huecos |
 | Hipoteca | Cargo automático mensual configurable (importe por tramos desde un mes, día de cargo), retroactivo desde septiembre de 2026; los pagos manuales previos se muestran y el admin elige cuáles **adoptar** como cargo de su mes (conservan justificante) |
 | Secretos | Token de Telegram y API key de Anthropic solo en variables de entorno (Easypanel / `.env`), nunca en el chat ni en el repo |
@@ -80,7 +80,7 @@ El admin necesita corregir datos financieros (aportes duplicados, fechas mal pue
 | 5 | [Agente de Telegram](./phase-05-agente-telegram.md) | Pending |
 | 6 | [Activación y despliegue](./phase-06-activacion-y-despliegue.md) | Pending |
 | 7 | [Cargo automático de la hipoteca](./phase-07-cargo-automatico-hipoteca.md) | Pending |
-| 8 | [Papelera de movimientos y aportes](./phase-08-papelera-movimientos-y-aportes.md) | Pending |
+| 8 | [Papelera de movimientos, aportes y gastos](./phase-08-papelera-movimientos-y-aportes.md) | Pending |
 
 Orden de ejecución: 1 → 2 → (corrección RT-6 de 1) → **8** → **7** → 3 → 4 → 5 → 6. Dependencias: 1→2 (el detector se reutiliza en el formulario); 2 y 3 antes de 4 (las herramientas exponen la edición nueva); 4→5→6.
 
