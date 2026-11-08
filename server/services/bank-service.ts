@@ -1,7 +1,8 @@
 import { and, asc, eq, inArray } from 'drizzle-orm'
-import { db } from '../db/client'
+import { db, type TxExecutor } from '../db/client'
 import { bankTransactions, contributions, financeSettings, paymentProofs, users } from '../db/schema'
 import { writeAuditLog } from '../utils/audit'
+import { assertNotTrashed, notDeleted } from '../utils/soft-delete'
 import { deleteFile } from './storage'
 
 export const BANK_DIRECTIONS = ['deposit', 'withdrawal'] as const
@@ -95,10 +96,13 @@ export async function updateTransaction(input: UpdateTransactionInput) {
     if (!transaction) {
       throw createError({ statusCode: 404, statusMessage: 'Movimiento no encontrado' })
     }
+    assertNotTrashed(transaction, 'El movimiento está en la papelera: restáuralo antes de editarlo')
 
+    // Solo aportes vivos: un aporte en la papelera no condiciona la coherencia del
+    // movimiento, porque tampoco cuenta en el saldo ni en la conciliación.
     const linked = await tx.select({ id: contributions.id })
       .from(contributions)
-      .where(eq(contributions.bankTransactionId, transaction.id))
+      .where(and(eq(contributions.bankTransactionId, transaction.id), notDeleted(contributions)))
     if (linked.length > 0) {
       if (input.direction !== 'deposit') {
         throw createError({ statusCode: 409, statusMessage: 'El movimiento tiene aportes vinculados y debe seguir siendo un ingreso' })
@@ -153,6 +157,7 @@ export async function attachTransactionProof(input: AttachProofInput) {
     if (!transaction) {
       throw createError({ statusCode: 404, statusMessage: 'Movimiento no encontrado' })
     }
+    assertNotTrashed(transaction, 'El movimiento está en la papelera: restáuralo antes de adjuntar el justificante')
     if (transaction.hasProof) {
       throw createError({ statusCode: 409, statusMessage: 'El movimiento ya tiene justificante' })
     }
@@ -173,25 +178,107 @@ export async function attachTransactionProof(input: AttachProofInput) {
   })
 }
 
-interface DeleteTransactionInput {
+interface TrashTransactionInput {
   transactionId: string
   actorId: string
 }
 
-// Borrado duro (solo admin, decisión de producto — patrón expenses). Al borrar un
-// movimiento se desvinculan (bankTransactionId = null) los aportes que lo referencian:
-// quedan vivos y vuelven a "pendiente de depósito" si eran efectivo. El justificante
-// (payment_proofs polimórfica + objeto MinIO) se limpia a mano.
-export async function deleteTransaction(input: DeleteTransactionInput) {
+// Papelera (fase 8, decisión de producto): el movimiento NO se borra, se marca. Todas las
+// lecturas lo ignoran desde ese momento (saldo, conciliación, fondo común) y su justificante
+// se conserva. El vínculo con los aportes se deja INTACTO (RT8-2): borrarlo obligaría a
+// reconstruirlo al restaurar y perdería información; en su lugar, todas las lecturas tratan
+// «vinculado a un movimiento en la papelera» como no vinculado.
+export async function trashTransaction(input: TrashTransactionInput) {
+  return db.transaction(tx => trashTransactionCore(tx, input))
+}
+
+// Núcleo reutilizable: el aporte por transferencia arrastra su ingreso auto-creado en la
+// MISMA transacción (RT8-3), y en ese caso el acto lo origina el aporte, no el movimiento.
+export async function trashTransactionCore(
+  tx: TxExecutor,
+  input: TrashTransactionInput & { cascadeFrom?: string }
+) {
+  const [transaction] = await tx.select().from(bankTransactions)
+    .where(eq(bankTransactions.id, input.transactionId)).for('update')
+  if (!transaction) {
+    throw createError({ statusCode: 404, statusMessage: 'Movimiento no encontrado' })
+  }
+  // Idempotente: dos clics en «Mover a la papelera» no fallan ni reescriben quién y cuándo.
+  if (transaction.deletedAt) {
+    return transaction
+  }
+
+  const [updated] = await tx.update(bankTransactions)
+    .set({ deletedAt: new Date(), deletedBy: input.actorId })
+    .where(eq(bankTransactions.id, transaction.id))
+    .returning()
+
+  await writeAuditLog({
+    actorId: input.actorId,
+    action: 'bank_transaction_trashed',
+    entityType: 'bank_transaction',
+    entityId: transaction.id,
+    metadata: {
+      description: transaction.description,
+      amountCents: transaction.amountCents,
+      direction: transaction.direction,
+      cascadeFrom: input.cascadeFrom ?? null
+    }
+  }, tx)
+
+  return updated!
+}
+
+// Restaurar: con el vínculo intacto no hay nada que reconstruir (RT8-2), basta con limpiar
+// la marca. Un aporte vinculado a este movimiento vuelve a contar como depositado.
+export async function restoreTransaction(input: TrashTransactionInput) {
+  return db.transaction(tx => restoreTransactionCore(tx, input))
+}
+
+// Núcleo reutilizable: restaurar un aporte por transferencia restaura también su ingreso
+// auto-creado en la MISMA transacción.
+export async function restoreTransactionCore(tx: TxExecutor, input: TrashTransactionInput) {
+  const [transaction] = await tx.select().from(bankTransactions)
+    .where(eq(bankTransactions.id, input.transactionId)).for('update')
+  if (!transaction) {
+    throw createError({ statusCode: 404, statusMessage: 'Movimiento no encontrado' })
+  }
+  if (!transaction.deletedAt) {
+    return transaction
+  }
+
+  const [updated] = await tx.update(bankTransactions)
+    .set({ deletedAt: null, deletedBy: null })
+    .where(eq(bankTransactions.id, transaction.id))
+    .returning()
+
+  await writeAuditLog({
+    actorId: input.actorId,
+    action: 'bank_transaction_restored',
+    entityType: 'bank_transaction',
+    entityId: transaction.id,
+    metadata: { description: transaction.description, amountCents: transaction.amountCents }
+  }, tx)
+
+  return updated!
+}
+
+// Borrado definitivo (solo Admin, solo desde la papelera — RT8-4). Reutiliza el núcleo del
+// borrado duro de antes: desvincula los aportes vivos que lo referenciaban (quedan
+// «pendientes de depósito» si eran efectivo) y elimina el justificante de MinIO.
+export async function purgeTransaction(input: TrashTransactionInput) {
   const result = await db.transaction(async (tx) => {
     const [transaction] = await tx.select().from(bankTransactions)
       .where(eq(bankTransactions.id, input.transactionId)).for('update')
     if (!transaction) {
       throw createError({ statusCode: 404, statusMessage: 'Movimiento no encontrado' })
     }
+    if (!transaction.deletedAt) {
+      throw createError({ statusCode: 409, statusMessage: 'Solo se puede eliminar definitivamente lo que está en la papelera' })
+    }
 
-    // Desvincular primero: contributions.bankTransactionId no tiene FK dura (patrón
-    // polimórfico del repo), sin esto quedarían apuntando a un id inexistente.
+    // Contribuciones y movimientos se referencian sin FK dura (patrón polimórfico del
+    // repo): sin este update quedarían apuntando a un id inexistente.
     await tx.update(contributions)
       .set({ bankTransactionId: null, updatedAt: new Date() })
       .where(eq(contributions.bankTransactionId, transaction.id))
@@ -207,7 +294,7 @@ export async function deleteTransaction(input: DeleteTransactionInput) {
 
     await writeAuditLog({
       actorId: input.actorId,
-      action: 'bank_transaction_deleted',
+      action: 'bank_transaction_purged',
       entityType: 'bank_transaction',
       entityId: transaction.id,
       metadata: { description: transaction.description, amountCents: transaction.amountCents, direction: transaction.direction }
@@ -216,7 +303,7 @@ export async function deleteTransaction(input: DeleteTransactionInput) {
     return { transactionId: transaction.id, proofObjectNames: proofs.map(p => p.objectName) }
   })
 
-  // MinIO fuera de la tx (igual que deleteExpense): un fallo aquí deja un objeto huérfano
+  // MinIO fuera de la tx (igual que antes): un fallo aquí deja un objeto huérfano
   // inofensivo, no un registro DB roto.
   for (const objectName of result.proofObjectNames) {
     await deleteFile(objectName).catch(() => null)
@@ -226,7 +313,9 @@ export async function deleteTransaction(input: DeleteTransactionInput) {
 }
 
 export async function listTransactions() {
-  return db.select().from(bankTransactions).orderBy(asc(bankTransactions.date), asc(bankTransactions.createdAt))
+  return db.select().from(bankTransactions)
+    .where(notDeleted(bankTransactions))
+    .orderBy(asc(bankTransactions.date), asc(bankTransactions.createdAt))
 }
 
 // ---- Configuración financiera global (fila única id = 'global') ----

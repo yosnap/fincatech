@@ -1,8 +1,10 @@
-import { deleteTransaction } from '../../../services/bank-service'
+import { trashTransaction } from '../../../services/bank-service'
 import { requireRole } from '../../../utils/rbac'
 
-// Borrado duro, solo Admin (decisión de producto — patrón expenses). El servicio
-// desvincula los aportes que referencian el movimiento antes de borrarlo.
+// Papelera (fase 8), solo Admin: el movimiento deja de contar en saldo, conciliación y fondo
+// común, pero se conserva con su justificante y se puede restaurar desde /admin/trash.
+// Los aportes vinculados NO se desvinculan: con el movimiento en la papelera, las lecturas
+// los tratan como no depositados hasta que se restaure.
 export default defineEventHandler(async (event) => {
   const actor = requireRole(event, ['admin'])
   const id = getRouterParam(event, 'id')
@@ -10,5 +12,5 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Falta id de movimiento' })
   }
 
-  return deleteTransaction({ transactionId: id, actorId: actor.id })
+  return trashTransaction({ transactionId: id, actorId: actor.id })
 })

@@ -34,6 +34,9 @@ export default defineEventHandler(async (event) => {
     let removedTaskId: string | null = null
 
     if (proposal.status === 'approved') {
+      // Sin filtro de papelera a propósito (RT8-9): la derrama de esta propuesta se encuentra
+      // aunque esté en la papelera. La propuesta se elimina definitivamente y su rastro debe
+      // desaparecer del todo, papelera incluida.
       const [expense] = await tx.select().from(expenses).where(eq(expenses.originProposalId, proposal.id)).for('update')
       if (expense) {
         // Lock TODAS las deudas de la derrama, sin filtrar por status: si filtráramos por
@@ -54,6 +57,17 @@ export default defineEventHandler(async (event) => {
         }
         await tx.delete(expenses).where(eq(expenses.id, expense.id))
         removedExpenseId = expense.id
+        // Si la derrama estaba en la papelera, además del borrado físico queda constancia del
+        // purgado con su origen, para no perder el rastro de por qué desapareció.
+        if (expense.deletedAt) {
+          await writeAuditLog({
+            actorId: actor.id,
+            action: 'expense_purged',
+            entityType: 'expense',
+            entityId: expense.id,
+            metadata: { description: expense.description, amountCents: expense.amountCents, cascadeFrom: proposal.id }
+          }, tx)
+        }
       }
 
       const [task] = await tx.select().from(tasks).where(eq(tasks.originProposalId, proposal.id)).for('update')

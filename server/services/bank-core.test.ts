@@ -311,10 +311,10 @@ describe('detección de duplicados de aportes', () => {
 
 describe('isOwnAutoTransferDeposit', () => {
   const own = {
-    contribution: { type: 'quota', period: '2026-10', amountCents: 5000, method: 'transfer' },
+    contributionId: 'c-1',
+    method: 'transfer',
     linkedCount: 1,
-    transaction: { amountCents: 5000, description: 'Cuota 2026-10 — Ana' },
-    memberName: 'Ana'
+    autoCreatedForContributionId: 'c-1'
   }
 
   it('reconoce el ingreso auto-creado de una transferencia individual', () => {
@@ -325,12 +325,12 @@ describe('isOwnAutoTransferDeposit', () => {
     expect(isOwnAutoTransferDeposit({ ...own, linkedCount: 3 })).toBe(false)
   })
 
-  it('no toca movimientos vinculados a mano (descripción o importe distintos)', () => {
-    expect(isOwnAutoTransferDeposit({ ...own, transaction: { amountCents: 5000, description: 'Ingreso efectivo octubre' } })).toBe(false)
-    expect(isOwnAutoTransferDeposit({ ...own, transaction: { ...own.transaction, amountCents: 9000 } })).toBe(false)
+  it('no toca movimientos vinculados a mano (sin marca de auto-creado)', () => {
+    expect(isOwnAutoTransferDeposit({ ...own, autoCreatedForContributionId: null })).toBe(false)
+    expect(isOwnAutoTransferDeposit({ ...own, autoCreatedForContributionId: 'otro-aporte' })).toBe(false)
   })
 
   it('no aplica a aportes en efectivo', () => {
-    expect(isOwnAutoTransferDeposit({ ...own, contribution: { ...own.contribution, method: 'cash' } })).toBe(false)
+    expect(isOwnAutoTransferDeposit({ ...own, method: 'cash' })).toBe(false)
   })
 })

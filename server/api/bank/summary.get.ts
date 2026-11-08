@@ -8,6 +8,7 @@ import {
 } from '../../services/bank-core'
 import { getActiveMembers, getSettings } from '../../services/bank-service'
 import { canSeeIndividualDebt, requireRole } from '../../utils/rbac'
+import { notDeleted } from '../../utils/soft-delete'
 
 // Resumen de conciliación: saldo actual, saldo pre-compra, efectivo pendiente de depósito,
 // ingresos sin origen y (solo Admin/Propietario) el fondo común por miembro. El Invitado
@@ -17,9 +18,11 @@ export default defineEventHandler(async (event) => {
   const actor = requireRole(event, ['admin', 'owner', 'guest'])
   const canSeeIndividual = canSeeIndividualDebt(actor)
 
+  // Saldo, conciliación y fondo común se calculan SOLO con filas vivas: lo que está en la
+  // papelera no es dinero de la copropiedad (fase 8).
   const [transactions, allContributions, activeMembers, settings] = await Promise.all([
-    db.select().from(bankTransactions),
-    db.select().from(contributions),
+    db.select().from(bankTransactions).where(notDeleted(bankTransactions)),
+    db.select().from(contributions).where(notDeleted(contributions)),
     getActiveMembers(),
     getSettings()
   ])

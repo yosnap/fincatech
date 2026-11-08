@@ -303,21 +303,22 @@ export function groupPossibleDuplicates<T extends DuplicateCandidate>(items: T[]
 // ---- Edición de aportes vinculados ----
 
 export interface LinkedSyncInput {
-  // Estado ANTES de editar.
-  contribution: { type: string, period: string | null, amountCents: number, method: string }
+  contributionId: string
+  // 'cash' | 'transfer' — solo una transferencia crea un ingreso propio.
+  method: string
   // Cuántos aportes comparten el movimiento (un adelanto multi-mes comparte uno).
   linkedCount: number
-  transaction: { amountCents: number, description: string }
-  memberName: string
+  // Marca explícita guardada en bank_transactions.auto_created_for_contribution_id al crear
+  // el aporte (fase 8). Antes se deducía comparando importe y descripción; guardar el hecho
+  // es más barato y sobrevive a renombrar un miembro o editar la descripción.
+  autoCreatedForContributionId: string | null
 }
 
-// ¿El movimiento vinculado es el ingreso auto-creado de ESTA transferencia individual? Solo
-// entonces se sincroniza al editar el aporte (importe, fecha, descripción). Un movimiento
-// compartido (adelanto) o vinculado a mano refleja dinero real del banco y no se toca.
+// ¿El movimiento vinculado es el ingreso auto-creado de ESTE aporte por transferencia? Solo
+// entonces se sincroniza al editar el aporte (importe, fecha, descripción) o se arrastra con
+// él a la papelera. Un movimiento compartido (adelanto) o vinculado a mano refleja dinero
+// real del banco y no se toca.
 export function isOwnAutoTransferDeposit(input: LinkedSyncInput): boolean {
-  const { contribution, linkedCount, transaction, memberName } = input
-  if (contribution.method !== 'transfer' || linkedCount !== 1) return false
-  if (transaction.amountCents !== contribution.amountCents) return false
-  const periods = contribution.period ? [contribution.period] : []
-  return transaction.description === buildTransferDescription(contribution.type, periods, memberName)
+  const { contributionId, method, linkedCount, autoCreatedForContributionId } = input
+  return method === 'transfer' && linkedCount === 1 && autoCreatedForContributionId === contributionId
 }

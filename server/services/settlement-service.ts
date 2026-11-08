@@ -1,6 +1,7 @@
 import { eq, or } from 'drizzle-orm'
 import { db } from '../db/client'
 import { bankTransactions, contributions, debts, users } from '../db/schema'
+import { listLiveDebts, listLiveExpenses, notDeleted } from '../utils/soft-delete'
 import {
   computeFondoComun,
   type FondoComunMember
@@ -21,9 +22,11 @@ export type SettlementWithFondoComun = Settlement & {
 // devuelve la diferencia final por persona. El total global de recibos pagados por cada
 // persona es solo contexto y se oculta al Invitado (mismo criterio que canSeeIndividualDebt).
 export async function getSettlement(user: SessionUser): Promise<SettlementWithFondoComun> {
+  // Solo filas vivas (fase 8): las deudas de un gasto en la papelera no participan en la
+  // liquidación y el gasto tampoco describe líneas ni suma en totalSpentCents.
   const [myDebts, allExpenses, allUsers] = await Promise.all([
-    db.select().from(debts).where(or(eq(debts.debtorId, user.id), eq(debts.creditorId, user.id))),
-    db.query.expenses.findMany(),
+    listLiveDebts(or(eq(debts.debtorId, user.id), eq(debts.creditorId, user.id))),
+    listLiveExpenses(),
     db.select({ id: users.id, name: users.name }).from(users)
   ])
 
@@ -36,8 +39,8 @@ export async function getSettlement(user: SessionUser): Promise<SettlementWithFo
   }
 
   const [allContributions, allTransactions, activeMembers] = await Promise.all([
-    db.select().from(contributions),
-    db.select().from(bankTransactions),
+    db.select().from(contributions).where(notDeleted(contributions)),
+    db.select().from(bankTransactions).where(notDeleted(bankTransactions)),
     getActiveMembers()
   ])
 

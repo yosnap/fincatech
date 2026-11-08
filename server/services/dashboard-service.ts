@@ -2,6 +2,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { db } from '../db/client'
 import { debts, expenses, users } from '../db/schema'
 import { canSeeIndividualDebt, type SessionUser } from '../utils/rbac'
+import { listLiveDebts, listLiveExpenses } from '../utils/soft-delete'
 
 export interface DebtSummaryItem {
   id: string
@@ -29,14 +30,16 @@ export interface DashboardSummary {
 }
 
 export async function getDashboardSummary(user: SessionUser): Promise<DashboardSummary> {
+  // El panel solo muestra deudas de gastos vivos (fase 8): lo que está en la papelera no es
+  // una deuda real ni suma en los totales del fondo.
   const [myDebtsAsDebtor, myDebtsAsCreditor] = await Promise.all([
-    db.query.debts.findMany({ where: eq(debts.debtorId, user.id) }),
-    db.query.debts.findMany({ where: eq(debts.creditorId, user.id) })
+    listLiveDebts(eq(debts.debtorId, user.id)),
+    listLiveDebts(eq(debts.creditorId, user.id))
   ])
 
   const relevantExpenseIds = [...new Set([...myDebtsAsDebtor, ...myDebtsAsCreditor].map(d => d.expenseId))]
   const relevantExpenses = relevantExpenseIds.length
-    ? await db.query.expenses.findMany({ where: inArray(expenses.id, relevantExpenseIds) })
+    ? await listLiveExpenses(inArray(expenses.id, relevantExpenseIds))
     : []
   const expenseMap = new Map(relevantExpenses.map(e => [e.id, e]))
 
@@ -79,7 +82,7 @@ export async function getDashboardSummary(user: SessionUser): Promise<DashboardS
   const now = new Date()
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
   const quarterStart = new Date(Date.UTC(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) * 3, 1))
-  const allExpenses = await db.query.expenses.findMany()
+  const allExpenses = await listLiveExpenses()
   const aggregateTotals = {
     monthCents: allExpenses.filter(e => e.createdAt >= monthStart).reduce((sum, e) => sum + e.amountCents, 0),
     quarterCents: allExpenses.filter(e => e.createdAt >= quarterStart).reduce((sum, e) => sum + e.amountCents, 0),
@@ -115,7 +118,7 @@ const EXPENSE_TYPE_LABELS: Record<string, string> = {
 const MONTH_LABELS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
 export async function getExpenseStatistics(user: SessionUser): Promise<ExpenseStatistics> {
-  const allExpenses = await db.query.expenses.findMany()
+  const allExpenses = await listLiveExpenses()
 
   const now = new Date()
   // 12 meses en vez de 6: con un año a la vista se aprecia la estacionalidad de la finca
@@ -148,7 +151,7 @@ export async function getExpenseStatistics(user: SessionUser): Promise<ExpenseSt
   let byOwner: OwnerBalance[] | null = null
   let byCreator: CreatorTotal[] | null = null
   if (canSeeIndividualDebt(user)) {
-    const allDebts = await db.query.debts.findMany()
+    const allDebts = await listLiveDebts()
     const allUsers = await db.select({ id: users.id, name: users.name }).from(users)
     const netByUser = new Map<string, number>(allUsers.map(u => [u.id, 0]))
     // Solo deuda viva (no confirmada) — un saldo liquidado no debe seguir apareciendo aquí.

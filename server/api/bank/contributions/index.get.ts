@@ -1,7 +1,8 @@
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '../../../db/client'
 import { bankTransactions, contributions, users } from '../../../db/schema'
 import { requireRole } from '../../../utils/rbac'
+import { notDeleted } from '../../../utils/soft-delete'
 
 // Lista de aportes: cada autenticado ve siempre los SUYOS; Admin/Propietario ven todos
 // (mismo criterio de desglose individual que canSeeIndividualDebt — el Invitado no ve el
@@ -10,9 +11,10 @@ export default defineEventHandler(async (event) => {
   const actor = requireRole(event, ['admin', 'owner', 'guest'])
   const canSeeAll = actor.role === 'admin' || actor.role === 'owner'
 
+  // Lo que está en la papelera no se lista (fase 8): vive en /admin/trash.
   const rows = canSeeAll
-    ? await db.select().from(contributions)
-    : await db.select().from(contributions).where(eq(contributions.memberId, actor.id))
+    ? await db.select().from(contributions).where(notDeleted(contributions))
+    : await db.select().from(contributions).where(and(eq(contributions.memberId, actor.id), notDeleted(contributions)))
 
   // Enriquecer con nombres (miembro y quién lo registró) y con el ingreso vinculado para
   // mostrar el estado de depósito sin N+1 consultas por fila.
@@ -29,11 +31,13 @@ export default defineEventHandler(async (event) => {
           date: bankTransactions.date,
           amountCents: bankTransactions.amountCents,
           description: bankTransactions.description
-        }).from(bankTransactions).where(inArray(bankTransactions.id, transactionIds))
+        }).from(bankTransactions).where(and(inArray(bankTransactions.id, transactionIds), notDeleted(bankTransactions)))
       : Promise.resolve([] as { id: string, date: string, amountCents: number, description: string }[])
   ])
 
   const nameById = new Map(userRows.map(u => [u.id, u.name]))
+  // Un movimiento en la papelera no cuenta como vínculo vivo (RT8-2): se resuelve a null y
+  // el aporte se muestra como «pendiente de depósito» hasta que el Admin lo restaure.
   const transactionById = new Map(transactionRows.map(t => [t.id, t]))
 
   return {
