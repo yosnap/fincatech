@@ -26,7 +26,7 @@ El admin configura en el banco el importe y el día de cargo de la hipoteca; cad
 ## Diseño
 
 1. **Tabla `mortgage_schedule`**: `id`, `amount_cents`, `charge_day` (1-31), `effective_from` ('YYYY-MM', único), `created_by` (FK users), `created_at`. El importe de un mes es el de la entrada con mayor `effective_from <= mes`.
-2. **`bank_transactions.mortgage_period`** ('YYYY-MM', nullable) con índice único parcial `where mortgage_period is not null`: un único cargo automático por mes, generación idempotente (`onConflictDoNothing`). Descripción `Hipoteca YYYY-MM`, `direction = 'withdrawal'`, sin categoría, `registered_by = created_by` de la entrada vigente.
+2. **`bank_transactions.mortgage_period`** ('YYYY-MM', nullable) con índice único parcial `where mortgage_period is not null and deleted_at is null` (**[RT8-10]**, la columna `deleted_at` llega en la fase 8, que se ejecuta antes): un único cargo automático por mes, generación idempotente (`onConflictDoNothing`). Descripción `Hipoteca YYYY-MM`, `direction = 'withdrawal'`, sin categoría, `registered_by = created_by` de la entrada vigente.
 3. **Marca de agua `finance_settings.mortgage_generated_through`** ('YYYY-MM'): el cron solo crea meses posteriores a la marca. Así, si el admin borra a mano un cargo automático (p. ej. un mes que no se cobró), no reaparece al día siguiente.
 4. **Guardar configuración = rellenar.** Al añadir o editar una entrada, se generan los meses vencidos que falten desde su `effective_from` hasta hoy, y los cargos automáticos ya existentes de esos meses con otro importe o día se corrigen (solo los automáticos, nunca los manuales). Es una acción explícita del admin, así que puede recrear un mes que se había borrado; se avisa en la respuesta.
 5. **Cron diario** (06:00 Europe/Madrid, `noOverlap`) en `server/plugins/mortgage-scheduler.ts`: crea el cargo del mes cuando llega su día de cargo y avanza la marca.
@@ -65,3 +65,10 @@ El admin configura en el banco el importe y el día de cargo de la hipoteca; cad
 - **[RT-10]** Marca de agua guardada con upsert de la fila `global` (o tabla propia); avanza al confirmar el relleno y en cada ejecución del cron.
 - **[RT-10]** Validación `effective_from >= '2026-09'`. Las herramientas `configurar_hipoteca` y de adopción son `destructive`; la confirmación indica «Se crearán N cargos (meses…) y se adoptarán M pagos».
 - Fechas con la utilidad Madrid compartida y `today` inyectable; auditoría del cron con canal `system`.
+
+## Interacción con la papelera (red-team fase 8, 2026-11-08)
+- Un mes cuyo cargo automático está en la papelera cuenta como **ocupado**: el relleno no lo recrea; la vista previa lo muestra como «en la papelera — restaurar» en lugar de crear uno nuevo.
+- Restaurar un cargo cuyo mes ya tiene otro cargo vivo → 409 legible.
+- Purgar un cargo automático avisa en la confirmación de que ese mes no se regenerará.
+- Los candidatos para adoptar excluyen filas en la papelera.
+

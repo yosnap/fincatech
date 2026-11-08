@@ -51,5 +51,5 @@ Un registro único de herramientas sobre los servicios existentes, expuesto como
 - **[RT-5]** Canal de auditoría con `AsyncLocalStorage<{ channel }>`: `runTool` ejecuta dentro de `runWithChannel(channel, fn)`; `writeAuditLog` lo lee con valor por defecto `'web'`; valor `'system'` para el cron de la hipoteca. Test: un servicio llamado dentro de `runTool` audita con el canal correcto.
 - **[RT-6]** `force` nunca forma parte del `inputSchema` de `crear_aporte`: el 409 de posible duplicado se devuelve al modelo como información.
 - **[RT-14]** Nueva operación `adminSettleDebt` (decisión del usuario): el admin marca pagada la deuda de otro miembro; audit con `actorId` = admin y `metadata.onBehalfOf` = deudor; botón equivalente en la web (paridad). `marcar_deuda_pagada` usa esta operación cuando la deuda no es del admin. Nunca se pasa otro `actorId`.
-- `listar_miembros` devuelve solo `id` y `name` (la salida llega a la API de Anthropic).
+- `listar_miembros` devuelve solo `id` y `name` (la salida llega al proveedor externo de IA).
 - Implementación por bloques con verificación en el inspector MCP al cerrar cada uno: banco + hipoteca → gastos/deudas → liquidación → tareas/ideas/propuestas/reservas.

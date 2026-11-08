@@ -3,7 +3,7 @@ title: "Gestión admin desde Telegram (agente IA + MCP) y edición financiera en
 description: "Servidor MCP remoto dentro de la app con las acciones de finanzas, tareas, ideas y reservas; bot de Telegram con agente Claude que usa esas herramientas (solo admin); edición completa de aportes, fecha de gastos y detector de duplicados en la web."
 status: in-progress
 priority: P1
-effort: 72h
+effort: 76h
 branch: feat/v0.17.0
 tags: [telegram, mcp, ia, claude, finanzas, aportes, gastos, admin]
 blockedBy: []
@@ -16,13 +16,13 @@ source: conversación con usuario (2026-11-08)
 
 ## Overview
 
-El admin necesita corregir datos financieros (aportes duplicados, fechas mal puestas en aportes y gastos) y quiere hacerlo tanto desde la web como desde Telegram hablando en lenguaje natural. Se construye **una única capa de herramientas** sobre los servicios existentes (`server/services/*`), expuesta de dos formas: un **servidor MCP remoto** (`/mcp`, Streamable HTTP) usable desde Claude Desktop/claude.ai, y un **agente de Telegram** que llama a Claude API con esas mismas herramientas. En paralelo se completan las carencias de la web.
+El admin necesita corregir datos financieros (aportes duplicados, fechas mal puestas en aportes y gastos) y quiere hacerlo tanto desde la web como desde Telegram hablando en lenguaje natural. Se construye **una única capa de herramientas** sobre los servicios existentes (`server/services/*`), expuesta de dos formas: un **servidor MCP remoto** (`/mcp`, Streamable HTTP) usable desde Claude Desktop/claude.ai, y un **agente de Telegram** que llama a un modelo vía API compatible con OpenAI con esas mismas herramientas. En paralelo se completan las carencias de la web.
 
 ## Contrato acordado (2026-11-08)
 
 | Decisión | Valor |
 |---|---|
-| Interfaz del bot | Agente IA (Claude API, tool use) + servidor MCP en la web |
+| Interfaz del bot | Agente IA con **API compatible con OpenAI** (`/chat/completions` + `tools`): OpenRouter o Nan Builders, con URL base, token y modelo configurables por entorno (decisión del usuario 2026-11-08) + servidor MCP en la web |
 | Alcance de acciones | Banco y aportes; gastos y deudas; liquidación y resúmenes; tareas, ideas, propuestas y reservas |
 | Quién usa el bot / MCP | Solo cuentas con rol `admin` (bot: chat vinculado vía `/link`; MCP: **OAuth 2.1** con la sesión de Better Auth, para que funcione como conector remoto en claude.ai, Claude Desktop y Claude Code — decisión del usuario 2026-11-08) |
 | Edición web | Fecha y notas de aportes; importe/tipo/período de aportes; fecha de gastos; detector de duplicados |
@@ -32,7 +32,7 @@ El admin necesita corregir datos financieros (aportes duplicados, fechas mal pue
 | Copias de BD | Copia semanal de `finca-db` (domingo 03:00, 8 copias, Local Disk de Easypanel) configurada el 2026-11-08; pgweb desactivado. Pendiente manual: cerrar el puerto público 5435 (el MCP del panel devuelve 404) y añadir un destino de copia fuera del servidor |
 | Paridad de canales | Toda acción disponible en bot o MCP debe poder hacerse también desde la web como admin (la web nunca queda por detrás). La fase 4 incluye una matriz herramienta → pantalla web y cubre los huecos |
 | Hipoteca | Cargo automático mensual configurable (importe por tramos desde un mes, día de cargo), retroactivo desde septiembre de 2026; los pagos manuales previos se muestran y el admin elige cuáles **adoptar** como cargo de su mes (conservan justificante) |
-| Secretos | Token de Telegram y API key de Anthropic solo en variables de entorno (Easypanel / `.env`), nunca en el chat ni en el repo |
+| Secretos | Token de Telegram y token del proveedor de IA solo en variables de entorno (Easypanel / `.env`), nunca en el chat ni en el repo |
 
 ## Estado actual verificado
 
@@ -90,7 +90,7 @@ Orden de ejecución: 1 → 2 → (corrección RT-6 de 1) → **8** → **7** →
 |---|---|
 | El agente IA ejecuta una acción equivocada | Confirmación obligatoria con resumen legible; borrados siempre `destructive`; audit log con canal |
 | Fuga del token MCP o de Telegram | Tokens OAuth de vida corta con refresh y revocación desde el perfil; secretos solo en env; comparación en tiempo constante |
-| Coste de Claude API | Modelo configurable por env, límite de turnos de herramienta por mensaje, rate limit por chat, registro de tokens consumidos |
+| Coste del proveedor de IA | Modelo configurable por env, límite de turnos de herramienta por mensaje, rate limit por chat, registro de tokens consumidos |
 | Recalcular movimiento rompe la conciliación | Reglas de la decisión 6 + tests de `bank-core` |
 | Migración de `expense_date` | Backup de BD antes de migrar (regla del proyecto); backfill determinista |
 
@@ -134,5 +134,44 @@ Orden de ejecución: 1 → 2 → (corrección RT-6 de 1) → **8** → **7** →
 | R1 | Tokens MCP sin caducidad | Medium | Reject (superado por OAuth) | — |
 
 Informe completo: `plans/reports/red-team-261108-1820-mcp-telegram-hipoteca.md`.
+
+### Session — 2026-11-08 (fase 8, papelera)
+**Findings:** 16 de 2 revisores (seguridad, modos de fallo) → 11 tras deduplicar, todos aceptados
+**Severity breakdown:** 2 Critical, 5 High, 4 Medium
+
+| # | Finding | Severity | Disposition | Applied To |
+|---|---------|----------|-------------|------------|
+| RT8-1 | Deudas de gastos en la papelera siguen en la liquidación | Critical | Accept | Fase 8 |
+| RT8-2 | Vínculo aporte-movimiento perdido al restaurar | Critical | Accept | Fase 8 |
+| RT8-3 | Arrastre aporte → ingreso por heurística y escalada de propietario | High | Accept (decisión: solo admin, marca explícita) | Fase 8 |
+| RT8-4 | Purga sin invariante de papelera ni permiso admin | High | Accept | Fase 8 |
+| RT8-5 | Carreras y lista cerrada incompleta → guard en servicios y orden de bloqueo | High | Accept | Fase 8 |
+| RT8-6 | Justificantes accesibles de elementos en la papelera | Medium | Accept | Fase 8 |
+| RT8-7 | Migración no reversible como se afirmaba | High | Accept | Fase 8 |
+| RT8-8 | Conflictos al restaurar (duplicado, miembro inactivo, participantes) | High | Accept | Fase 8 |
+| RT8-9 | Contradicción con borrado de propuestas y derrama | Medium | Accept | Fase 8 |
+| RT8-10 | Hipoteca: índice y meses con cargo en la papelera | Medium | Accept | Fases 7 y 8 |
+| RT8-11 | Afirmaciones falsas y ficheros de gastos incompletos | Medium | Accept | Fase 8 |
+
+## Validation Log
+
+### Session 1 — 2026-11-08
+**Preguntas:** 4 (junto con la revisión del red-team de la fase 8)
+
+| Pregunta | Decisión |
+|---|---|
+| ¿Aplicar los 11 hallazgos de la fase 8? | Sí, todos |
+| ¿Arrastrar el ingreso auto-creado al mandar un aporte a la papelera? | Solo si lo hace un admin; propietario → solo el aporte + alerta |
+| ¿Caducidad de la papelera? | Nunca; solo vaciado manual |
+| ¿Modelo del bot? | **Sin Anthropic**: API compatible con OpenAI (OpenRouter o Nan Builders) con URL base, token y modelo configurables |
+
+**Propagación:** fases 4, 5, 6, 7 y 8 actualizadas; plan.md (contrato, riesgos, red-team).
+
+**Barrido de coherencia:** sin referencias pendientes a Anthropic ni a borrado de candidatos de hipoteca; fase 7 alineada con el índice de la fase 8; orden de ejecución 1 (RT-6) → 8 → 7 → 3 → 4 → 5 → 6 coherente con las dependencias.
+
+**Verificación:** Failed: 0 — supuesto clave pendiente de comprobar al inicio de la fase 5: *function calling* fiable del modelo elegido.
+
+**Recomendación:** proceder con la implementación.
+
 
 <!-- slug: mcp-telegram-edicion-admin -->

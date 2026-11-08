@@ -3,7 +3,7 @@ phase: 8
 title: "Phase 8: Papelera de movimientos, aportes y gastos"
 status: todo
 priority: P1
-effort: 10h
+effort: 14h
 dependencies: [1]
 ---
 
@@ -18,9 +18,9 @@ Eliminar un movimiento bancario, un aporte o un gasto lo manda a la papelera (no
 1. **Columnas** `deleted_at timestamptz` y `deleted_by text` (FK users) en `bank_transactions`, `contributions` y `expenses` (las `debts` heredan el estado de su gasto; no llevan columna propia). Migración aditiva y nullable (compatible con rollback).
 2. **Filtro único**: helper `notDeleted(table)` usado en todas las lecturas. Lista cerrada de consultas a revisar: `bank-service.ts` (saldo, listado, `getActiveMembers` no aplica), `contribution-service.ts` (grid, duplicados, comprobación de duplicado al crear, vinculación), `settlement-service.ts` (fondo común), `api/bank/summary.get.ts`, `api/bank/contributions/index.get.ts`, `api/bank/transactions/[id].get.ts`, `[id]/proof.post.ts`. Test: lo que está en la papelera no cuenta en saldo, fondo común, grid ni conciliación.
 3. **Índice único de cuota** (`contributions_quota_unique`) pasa a `where type = 'quota' and deleted_at is null`, para poder volver a registrar el mes tras mandar una cuota a la papelera.
-4. **Mandar a la papelera un movimiento**: los aportes vinculados se desvinculan (igual que ahora) y sus ids se guardan en el audit (`unlinkedContributionIds`) para poder revincularlos al restaurar. El justificante **no** se borra.
+4. **Mandar a la papelera un movimiento** ~~desvincula los aportes~~ **[RT8-2] no desvincula**: `bankTransactionId` queda intacto y todas las lecturas tratan «vinculado a un movimiento en la papelera» como no vinculado (efectivo → pendiente de depósito; transferencia → alerta «aporte sin ingreso»). Restaurar no necesita el audit. El justificante **no** se borra.
 5. **Restaurar**: comprueba conflictos (cuota del mismo miembro y mes ya registrada → 409 legible; aporte que ya se vinculó a otro movimiento → no se revincula y se avisa). Restaurar un movimiento revincula los aportes que sigan libres.
-6. **Eliminar definitivamente**: solo desde la papelera, con confirmación; usa la lógica actual de borrado duro (`deleteTransaction` / `deleteContribution`, incluido limpiar el justificante en MinIO).
+6. **Eliminar definitivamente** **[RT8-4]**: servicios nuevos `purgeTransaction` / `purgeContribution` / `purgeExpense` con `assertAdmin`, `FOR UPDATE` y 409 si la fila no está en la papelera; reutilizan el núcleo de borrado duro y auditan `*_purged`. (Corrección: `deleteContribution` hoy no limpia justificantes; el justificante de una transferencia cuelga de su movimiento y se limpia al purgar el movimiento.) Purgar un movimiento desvincula entonces sus aportes (que quedan sin vínculo).
 7. **Permisos**: igual que hoy (movimientos: admin; aportes: admin o quien lo registró). La papelera y el borrado definitivo, solo admin.
 8. Hipoteca (fase 7): el índice único de `mortgage_period` y los candidatos manuales también ignoran filas en la papelera.
 
@@ -59,4 +59,17 @@ Eliminar un movimiento bancario, un aporte o un gasto lo manda a la papelera (no
 - **Hipoteca** (fase 7): los candidatos para adoptar excluyen la papelera; un cargo automático en la papelera **no** se regenera (la marca de agua ya lo cubre) y restaurarlo respeta el índice único de `mortgage_period` (que pasa a `where deleted_at is null`).
 - **Lectura por id** (`api/bank/transactions/[id].get.ts`, `api/expenses/[id].get.ts`): devuelven el elemento aunque esté en la papelera, con `deletedAt`, para que la papelera pueda mostrar el detalle; el resto de acciones sobre un elemento en la papelera responden 409.
 - **Tests**: saldo, fondo común, liquidación y export con filas en la papelera; restaurar con conflicto de cuota; doble papelera / doble restauración idempotentes.
+
+## Red Team fase 8 (2026-11-08) — 11 hallazgos aceptados; prevalece sobre lo anterior si contradice
+- **[RT8-1] Crítico — deudas:** helper `liveDebts()` = `debts` con `innerJoin(expenses)` + `isNull(expenses.deletedAt)`, usado en **todas** las lecturas de `debts` (settlement, dashboard, export, `expenses/*`, `debts/*`, `assessment-service`). `computeSettlement` descarta toda deuda cuyo gasto no esté en `expenseMap` (hoy la pinta con descripción vacía, `settlement-core.ts:89-93`). Test: gasto en la papelera → liquidación y `byOwner` a 0. Verificar con `grep "from(debts)\|query.debts"` que no queda consumidor fuera.
+- **[RT8-2] Crítico — vínculos:** ver Diseño §4 (no desvincular). `linkedCount` y el detector cuentan solo filas vivas.
+- **[RT8-3] Arrastre aporte → ingreso (decisión del usuario: solo admin):** nueva columna `bank_transactions.auto_created_for_contribution_id` (uuid, nullable) rellenada en `createContribution` para transferencias; backfill único de los existentes con `isOwnAutoTransferDeposit`, revisado en local antes de producción. Si el actor es **admin**, aporte e ingreso marcado van juntos a la papelera y se restauran juntos (audit `bank_transaction_trashed` con `cascadeFrom`). Si es **propietario**, solo el aporte; aparece la alerta «ingreso sin aporte» para el admin. Esto sustituye al punto «Aporte por transferencia» de la revisión rápida.
+- **[RT8-5] Bloqueos y estado dentro del servicio:** `assertNotTrashed(row)` bajo el `FOR UPDATE` de cada servicio que muta (`updateTransaction`, `updateContribution`, `link/unlinkContribution`, `updateExpenseParticipants`, `reassignExpenseCreator`, `markDebtPaid`, `confirmDebtReceipt`, `updateExpenseDate`, adjuntar justificante). `linkContribution` bloquea el movimiento destino (`FOR UPDATE`) y exige que esté vivo. `markDebtPaid` / `confirmDebtReceipt` bloquean el gasto (`FOR SHARE`) después de la deuda y rechazan si está en la papelera. Orden global de bloqueo: gasto → deudas → movimiento → aportes. `trash`/`restore`/`purge` comprueban el estado dentro del bloqueo. Tests de concurrencia por pareja (papelera vs pago, papelera vs vincular, restaurar vs purgar).
+- **[RT8-6] Justificantes:** `proof.get.ts` de movimientos y gastos devuelven 404 a no-admin si el padre está en la papelera.
+- **[RT8-7] Migración:** se retira «compatible con rollback». Documentar que antes de volver a una imagen anterior hay que vaciar la papelera (o las filas reaparecen). `DROP INDEX` + `CREATE UNIQUE INDEX` en la misma migración; probarla sobre una copia de la BD de producción en local.
+- **[RT8-8] Restaurar:** reutiliza el criterio de duplicado de la fase 1 bajo el mismo `pg_advisory_xact_lock` (409 `possible_duplicate` con «Restaurar igualmente» solo en la web); rechaza aportes de miembros dados de baja; un gasto se restaura solo si sus participantes siguen activos (si no, 409 con la lista).
+- **[RT8-9] Propuestas:** `proposals/[id].delete.ts` **sale de la lista de filtrado**: sigue encontrando la derrama aunque esté en la papelera, mantiene su guard de deudas no pendientes y, si estaba en la papelera, audita también `expense_purged` (`cascadeFrom: proposalId`). El guard idempotente de `executeApprovedProposal` lee **sin** filtro de papelera, con comentario y test.
+- **[RT8-10] Hipoteca:** ver cambios en la fase 7 (índice con `deleted_at is null`; mes con cargo en la papelera = ocupado; la vista previa ofrece «restaurar» en vez de crear; purgar un cargo automático avisa de que ese mes no se regenerará).
+- **[RT8-11] Ficheros completos para gastos:** `server/db/schema/expenses.ts`, `expense-service.ts`, `dashboard-service.ts`, `export-service.ts`, `export-formatters.ts`, `assessment-service.ts`, `api/expenses/[id].delete.ts`, `api/expenses/[id]/restore.post.ts`, `[id]/purge.delete.ts`, y `expenses` en `trash.get.ts`.
+- **Caducidad (decisión del usuario):** nada se elimina solo; la papelera se vacía únicamente a mano.
 
