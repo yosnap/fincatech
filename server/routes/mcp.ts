@@ -30,18 +30,27 @@ export default defineEventHandler(async (event) => {
   // navegador; el resto de clientes llama desde su propio proceso sin CORS.
   if (event.method === 'OPTIONS') {
     setResponseStatus(event, 204)
-    event.headers.set('Access-Control-Allow-Origin', '*')
-    event.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-    event.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id')
-    return
+    setResponseHeaders(event, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Mcp-Protocol-Version',
+      'Access-Control-Expose-Headers': 'WWW-Authenticate'
+    })
+    return null
   }
 
   // Modo stateless: solo POST con mensajes JSON-RPC. GET (stream SSE) y DELETE (fin de
   // sesión) no aplican porque no hay sesiones.
   if (event.method !== 'POST') {
-    event.headers.set('Allow', 'POST')
+    setResponseHeader(event, 'Allow', 'POST, OPTIONS')
     throw createError({ statusCode: 405, statusMessage: 'Method Not Allowed' })
   }
+
+  // Cabeceras CORS en el res de Node: las heredan la respuesta del transport y la del guard.
+  setResponseHeaders(event, {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Expose-Headers': 'WWW-Authenticate'
+  })
 
   const { req, res } = event.node ?? {}
   if (!req || !res) {
@@ -68,7 +77,8 @@ export default defineEventHandler(async (event) => {
 
     // El actor se cierra aquí y `runTool` lo re-verifica en cada herramienta (admin,
     // no banned) — nunca se acepta un actor aportado por el cliente.
-    const server = createMcpServer({ id: user.id, role: user.role, banned: user.banned })
+    // Una cuenta pendiente de aprobación nunca actúa, aunque tuviera rol (defensa en profundidad).
+    const server = createMcpServer({ id: user.id, role: user.role, banned: user.banned || user.pendingApproval })
     const transport = new StreamableHTTPServerTransport({
       // Stateless: sin sessionIdGenerator no se emite Mcp-Session-Id.
       sessionIdGenerator: undefined,

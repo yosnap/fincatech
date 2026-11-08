@@ -19,6 +19,7 @@ const { data, refresh } = await useFetch<{ clients: McpClient[] }>('/api/admin/m
 })
 
 const revoking = ref<string | null>(null)
+const toast = useToast()
 
 async function revoke(client: McpClient) {
   const confirmed = await useConfirmDialog()({
@@ -31,6 +32,9 @@ async function revoke(client: McpClient) {
   try {
     await $fetch(`/api/admin/mcp-clients/${client.id}`, { method: 'DELETE' })
     await refresh()
+    toast.add({ title: 'Acceso revocado', color: 'success' })
+  } catch {
+    toast.add({ title: 'No se pudo revocar el acceso', color: 'error' })
   } finally {
     revoking.value = null
   }

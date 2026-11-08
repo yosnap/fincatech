@@ -24,6 +24,15 @@ export default defineEventHandler(async (event) => {
   return {
     clientId,
     clientName: app?.name ?? 'Aplicación desconocida',
+    // Dónde se entregará el acceso: el Admin ve el destino real, no solo el nombre que el
+    // cliente eligió al registrarse.
+    redirectHosts: [...new Set((app?.redirectUrls ?? '').split(',').filter(Boolean).map((url) => {
+      try {
+        return new URL(url).host
+      } catch {
+        return url
+      }
+    }))],
     scope: typeof query.scope === 'string' ? query.scope : '',
     isAdmin: session.user.role === 'admin' && !session.user.banned && !session.user.pendingApproval
   }

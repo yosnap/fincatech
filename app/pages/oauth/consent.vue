@@ -16,6 +16,7 @@ const query = {
 interface ConsentInfo {
   clientId: string
   clientName: string
+  redirectHosts: string[]
   scope: string
   isAdmin: boolean
 }
@@ -74,6 +75,12 @@ async function decide(accept: boolean) {
           </p>
           <p class="text-base font-semibold">
             {{ info.clientName }}
+          </p>
+          <p
+            v-if="info.redirectHosts.length"
+            class="text-xs text-muted"
+          >
+            El acceso se entregará a: <strong>{{ info.redirectHosts.join(', ') }}</strong>
           </p>
           <p
             v-if="info.scope"

@@ -10,6 +10,7 @@ import {
 import { getPendingQuotas } from '../services/contribution-service'
 import { confirmBackfill, createScheduleEntry, getMortgageOverview, previewBackfill } from '../services/mortgage-service'
 import {
+  amountCentsSchema,
   bankDirectionSchema,
   bankTransactionFieldsSchema,
   calendarDateSchema,
@@ -59,7 +60,7 @@ export const bankTools = [
 
   defineTool({
     name: 'listar_movimientos',
-    description: 'Lista los movimientos bancarios (ingresos y salidas) con su importe. Filtrable por rango de fechas y por dirección. No incluye lo que está en la papelera.',
+    description: 'Lista los movimientos bancarios (ingresos y salidas) con su importe. Filtrable por rango de fechas y por dirección. Ordenados del más reciente al más antiguo; si hay más que el límite, se omiten los más antiguos. No incluye lo que está en la papelera.',
     kind: 'read',
     inputSchema: z.object({
       desde: calendarDateSchema.optional(),
@@ -74,7 +75,7 @@ export const bankTools = [
         && (!input.desde || t.date >= input.desde)
         && (!input.hasta || t.date <= input.hasta)
       )
-      const { items, omitted } = truncate(filtered, input.limite ?? MAX_TRANSACTIONS)
+      const { items, omitted } = truncate(filtered.reverse(), input.limite ?? MAX_TRANSACTIONS)
       return {
         movimientos: items.map(t => ({
           id: t.id,
@@ -201,7 +202,7 @@ export const bankTools = [
     description: 'Añade un tramo de hipoteca: a partir de un mes, el cargo tiene ese importe y cae ese día. No reescribe cargos ya creados.',
     kind: 'destructive',
     inputSchema: z.object({
-      amountCents: z.number().int().positive(),
+      amountCents: amountCentsSchema,
       chargeDay: z.number().int().min(1).max(31),
       effectiveFrom: z.string().describe('Mes de inicio en formato YYYY-MM (no anterior a 2026-09)')
     }),

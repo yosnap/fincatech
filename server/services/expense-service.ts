@@ -267,7 +267,9 @@ export async function adminSettleDebt(input: AdminSettleDebtInput) {
   }
 
   return db.transaction(async (tx) => {
-    // Mismo orden que el resto de mutaciones de deudas: deuda → gasto.
+    // Bloquea deuda → gasto, como confirmDebtReceipt. Las mutaciones del gasto (papelera,
+    // purga, participantes) bloquean gasto → deudas: un cruce concurrente puede acabar en
+    // deadlock y Postgres aborta una de las dos (la operación devuelve error y se reintenta).
     const [debt] = await tx.select().from(debts).where(eq(debts.id, input.debtId)).for('update')
     if (!debt) {
       throw createError({ statusCode: 404, statusMessage: 'Cuota no encontrada' })

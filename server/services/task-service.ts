@@ -96,6 +96,9 @@ export async function updateTask(input: UpdateTaskInput) {
   if (!task) {
     throw createError({ statusCode: 404, statusMessage: 'Tarea no encontrada' })
   }
+  if (task.discardedAt) {
+    throw createError({ statusCode: 409, statusMessage: 'La tarea está descartada y no admite cambios' })
+  }
 
   const [updated] = await db.update(tasks).set({
     ...(input.title !== undefined && { title: input.title }),

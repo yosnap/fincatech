@@ -9,9 +9,9 @@ export default defineEventHandler(async (event) => {
   const metadata = await auth.api.getMcpOAuthConfig({
     headers: event.headers
   })
-  setResponseStatus(event, 200)
-  event.headers.set('Content-Type', 'application/json')
-  event.headers.set('Access-Control-Allow-Origin', '*')
-  event.headers.set('Cache-Control', 'no-store')
-  return JSON.stringify(metadata)
+  setResponseHeaders(event, {
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-store'
+  })
+  return metadata
 })

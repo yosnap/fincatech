@@ -22,7 +22,7 @@ const MAX_CONTRIBUTIONS = 60
 export const contributionTools = [
   defineTool({
     name: 'listar_aportes',
-    description: 'Lista los aportes de los miembros (cuotas, pre-compra y extraordinarios) con importe, tipo, período y estado de depósito. Filtrable por miembro, tipo y rango de fechas. No incluye lo que está en la papelera.',
+    description: 'Lista los aportes de los miembros (cuotas, pre-compra y extraordinarios) con importe, tipo, período y estado de depósito. Filtrable por miembro, tipo y rango de fechas. Ordenados del más reciente al más antiguo; si hay más que el límite, se omiten los más antiguos. No incluye lo que está en la papelera.',
     kind: 'read',
     inputSchema: z.object({
       memberId: z.string().optional(),
@@ -39,7 +39,7 @@ export const contributionTools = [
         to: input.hasta
       })
       const names = await getUserNameMap([...new Set(rows.flatMap(row => [row.memberId, row.registeredBy]))])
-      const { items, omitted } = truncate(rows, input.limite ?? MAX_CONTRIBUTIONS)
+      const { items, omitted } = truncate([...rows].reverse(), input.limite ?? MAX_CONTRIBUTIONS)
       return {
         aportes: items.map(row => ({
           id: row.id,
@@ -92,7 +92,9 @@ export const contributionTools = [
     name: 'editar_aporte',
     description: 'Edita notas, fecha, importe, tipo o período de un aporte. Si es una transferencia individual con su ingreso, ese movimiento se sincroniza para que el saldo cuadre; si el movimiento es compartido o se vinculó a mano, cambiar el importe exige desvincular antes.',
     kind: 'write',
-    inputSchema: updateContributionSchema.extend({ id: z.string().uuid() }),
+    inputSchema: updateContributionSchema
+      .extend({ id: z.string().uuid() })
+      .refine(({ id: _id, ...changes }) => Object.keys(changes).length > 0, { message: 'No hay cambios que aplicar' }),
     handler: async (actor, input) => {
       const { id, ...changes } = input
       const updated = await updateContribution({ contributionId: id, actorId: actor.id, ...changes })
