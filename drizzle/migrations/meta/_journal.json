@@ -134,6 +134,13 @@
       "when": 1794164231923,
       "tag": "0018_omniscient_malice",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794165346398,
+      "tag": "0019_small_red_ghost",
+      "breakpoints": true
     }
   ]
 }

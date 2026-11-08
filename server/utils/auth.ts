@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { admin } from 'better-auth/plugins'
+import { admin, mcp } from 'better-auth/plugins'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/client'
@@ -20,7 +20,11 @@ export const auth = betterAuth({
       user: schema.users,
       session: schema.sessions,
       account: schema.accounts,
-      verification: schema.verifications
+      verification: schema.verifications,
+      // Servidor de autorización OAuth 2.1 del servidor MCP (fase 4).
+      oauthApplication: schema.oauthApplication,
+      oauthAccessToken: schema.oauthAccessToken,
+      oauthConsent: schema.oauthConsent
     }
   }),
   emailAndPassword: {
@@ -51,6 +55,18 @@ export const auth = betterAuth({
       adminRoles: ['admin'],
       ac,
       roles: { admin: adminRole, owner: ownerRole, guest: guestRole }
+    }),
+    // Servidor MCP remoto en /mcp (fase 4): el plugin monta el flujo OAuth 2.1 completo bajo
+    // /api/auth (/mcp/authorize, /mcp/token, /mcp/register, jwks, userinfo, consentimiento).
+    // `loginPage` es nuestra pantalla de login (si no hay sesión, redirige ahí conservando la
+    // petición original) y `consentPage` la pantalla de consentimiento propia.
+    mcp({
+      loginPage: '/login',
+      resource: `${env.BETTER_AUTH_URL}/mcp`,
+      oidcConfig: {
+        loginPage: '/login',
+        consentPage: '/oauth/consent'
+      }
     })
   ],
   hooks: {

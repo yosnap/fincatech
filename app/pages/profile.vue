@@ -4,6 +4,7 @@ import { authClient } from '~/utils/auth-client'
 definePageMeta({ middleware: ['auth'] })
 
 const { data: session } = await authClient.useSession(useFetch)
+const isAdmin = computed(() => session.value?.user.role === 'admin')
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrador',
@@ -160,6 +161,18 @@ async function savePreferences(telegramEnabled: boolean, emailEnabled: boolean) 
           Ya lo envié — comprobar vinculación
         </UButton>
       </div>
+    </UCard>
+
+    <UCard
+      v-if="isAdmin"
+    >
+      <template #header>
+        <h2 class="text-lg font-semibold">
+          Aplicaciones conectadas (MCP)
+        </h2>
+      </template>
+
+      <McpClientsCard />
     </UCard>
   </div>
 </template>

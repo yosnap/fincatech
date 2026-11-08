@@ -1,5 +1,6 @@
 export * from './users'
 export * from './auth'
+export * from './oauth'
 export * from './invitations'
 export * from './audit-log'
 export * from './expenses'
