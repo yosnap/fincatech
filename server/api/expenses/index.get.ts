@@ -2,6 +2,7 @@ import { desc } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { expenses } from '../../db/schema'
 import { canSeeIndividualDebt, requireRole } from '../../utils/rbac'
+import { listLiveDebts, notDeleted } from '../../utils/soft-delete'
 import { getUserNameMap } from '../../utils/user-names'
 
 // El Invitado ve el libro contable, pero nunca el desglose individual (quién debe a quién).
@@ -9,7 +10,11 @@ import { getUserNameMap } from '../../utils/user-names'
 export default defineEventHandler(async (event) => {
   const user = requireRole(event, ['admin', 'owner', 'guest'])
 
-  const rows = await db.query.expenses.findMany({ orderBy: [desc(expenses.createdAt)] })
+  // Lo que está en la papelera no se lista en el libro de gastos (fase 8).
+  const rows = await db.query.expenses.findMany({
+    where: notDeleted(expenses),
+    orderBy: [desc(expenses.createdAt)]
+  })
   const nameMap = await getUserNameMap(rows.map(e => e.createdBy))
 
   // participantSnapshot es jsonb sin tipo declarado en el esquema — solo se usa aquí para
@@ -34,7 +39,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const allDebts = await db.query.debts.findMany()
+  const allDebts = await listLiveDebts()
   return {
     expenses: rows.map(e => ({
       id: e.id,

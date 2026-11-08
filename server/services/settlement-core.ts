@@ -87,10 +87,13 @@ export function computeSettlement(
     // Guarda defensiva: una deuda de alguien consigo mismo no participa en la liquidación.
     if (debt.debtorId === debt.creditorId) continue
     const expense = expenseMap.get(debt.expenseId)
+    // RT8-1: una deuda sin gasto vivo (gasto en la papelera o borrado) se descarta por
+    // completo. Antes se pintaba una línea con descripción vacía que seguía sumando al saldo.
+    if (!expense) continue
     const line: SettlementLine = {
       debtId: debt.id,
       expenseId: debt.expenseId,
-      description: expense?.description ?? '',
+      description: expense.description,
       amountCents: debt.amountCents,
       status: debt.status,
       createdAt: debt.createdAt

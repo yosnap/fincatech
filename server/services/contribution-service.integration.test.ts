@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, expect, it } from 'vitest'
+import { describeDb, setupIntegrationDb } from '../test/integration-db'
 
 // Test de integración contra Postgres REAL: el resto de la suite prueba funciones puras, pero
 // la corrección RT-6 (comprobación de duplicado dentro de la transacción + advisory lock) no
@@ -9,32 +10,19 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 // Se activa solo con TEST_DATABASE_URL (una BD con las migraciones aplicadas); sin ella el
 // bloque entero queda en 'skipped' y `pnpm test` sigue siendo puro:
 //   TEST_DATABASE_URL=postgres://fincatech:fincatech@localhost:5438/fincatech pnpm test
-const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL
-
-const describeDb = TEST_DATABASE_URL ? describe : describe.skip
-
 describeDb('createContribution — concurrencia (RT-6)', () => {
   const memberId = `test-member-${randomUUID()}`
   const today = new Date().toISOString().slice(0, 10)
   let service: typeof import('./contribution-service')
-  let client: typeof import('../db/client')
-  let schema: typeof import('../db/schema')
+  let client: Awaited<ReturnType<typeof setupIntegrationDb>>
+  let schema: Awaited<ReturnType<typeof setupIntegrationDb>>['schema']
 
   beforeAll(async () => {
-    // getEnv() valida TODAS las variables al importar el cliente de DB; en vitest solo hace
-    // falta la conexión, así que se rellenan los mínimos con valores locales de test.
-    process.env.DATABASE_URL = TEST_DATABASE_URL
-    process.env.MINIO_ENDPOINT ??= 'localhost'
-    process.env.MINIO_PORT ??= '9000'
-    process.env.MINIO_ACCESS_KEY ??= 'test'
-    process.env.MINIO_SECRET_KEY ??= 'test'
-    process.env.MINIO_BUCKET ??= 'test'
-    process.env.BETTER_AUTH_SECRET ??= '0123456789abcdef0123456789abcdef'
-    process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
+    const integration = await setupIntegrationDb()
+    client = integration
+    schema = integration.schema
 
     service = await import('./contribution-service')
-    client = await import('../db/client')
-    schema = await import('../db/schema')
 
     await client.db.insert(schema.users).values({
       id: memberId,

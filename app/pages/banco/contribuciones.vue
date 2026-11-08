@@ -154,19 +154,19 @@ async function onUnlink(contribution: ContributionItem) {
 
 async function onDelete(contribution: Pick<ContributionItem, 'id' | 'memberName' | 'amountCents'>) {
   const confirmed = await confirm({
-    title: 'Eliminar aporte',
-    description: `Se eliminará el aporte de ${contribution.memberName} (${formatEuros(contribution.amountCents)}). El movimiento bancario vinculado no se toca: si queda sin origen, aparecerá en las alertas del resumen.`,
-    confirmLabel: 'Eliminar',
+    title: 'Mover aporte a la papelera',
+    description: `El aporte de ${contribution.memberName} (${formatEuros(contribution.amountCents)}) dejará de contar en el saldo y el grid. Si es una transferencia con su ingreso, el Admin mueve también el ingreso. Podrás restaurarlo desde la papelera.`,
+    confirmLabel: 'Mover a la papelera',
     color: 'error'
   })
   if (!confirmed) return
 
   try {
     await $fetch(`/api/bank/contributions/${contribution.id}`, { method: 'DELETE' })
-    toast.add({ title: 'Aporte eliminado', color: 'success' })
+    toast.add({ title: 'Aporte movido a la papelera', color: 'success' })
     await refreshAll()
   } catch {
-    toast.add({ title: 'No se pudo eliminar el aporte', color: 'error' })
+    toast.add({ title: 'No se pudo mover el aporte a la papelera', color: 'error' })
   }
 }
 

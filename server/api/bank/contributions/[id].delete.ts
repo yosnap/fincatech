@@ -1,9 +1,10 @@
-import { deleteContribution } from '../../../services/contribution-service'
+import { trashContribution } from '../../../services/contribution-service'
 import { requireRole } from '../../../utils/rbac'
 
-// Borrado duro: el autor del registro o el Admin (regla del servicio, patrón expenses).
-// El movimiento bancario vinculado NUNCA se borra con el aporte — solo queda desvinculado;
-// si pierde su origen aparece en la alerta de "ingresos sin aporte asociado" del resumen.
+// Papelera (fase 8): el autor del registro o el Admin (regla del servicio, patrón expenses).
+// Si es una transferencia con su ingreso espejo y quien lo hace es el Admin, el movimiento se
+// mueve también a la papelera en la misma transacción (RT8-3); si es un Propietario, el
+// ingreso queda vivo y el resumen avisa de «ingreso sin aporte asociado».
 export default defineEventHandler(async (event) => {
   const actor = requireRole(event, ['admin', 'owner', 'guest'])
   const id = getRouterParam(event, 'id')
@@ -11,5 +12,5 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Falta id de aporte' })
   }
 
-  return deleteContribution({ contributionId: id, actorId: actor.id, actorRole: actor.role })
+  return trashContribution({ contributionId: id, actorId: actor.id, actorRole: actor.role })
 })

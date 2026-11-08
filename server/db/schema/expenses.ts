@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { boolean, integer, jsonb, pgTable, real, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, jsonb, pgTable, real, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { proposals } from './governance'
 import { users } from './users'
 
@@ -28,13 +28,18 @@ export const expenses = pgTable('expenses', {
   // No nulo solo para type='derrama' (Fase 7) — guard idempotente de executeApprovedProposal:
   // una propuesta aprobada nunca genera dos derramas.
   originProposalId: uuid('origin_proposal_id').references(() => proposals.id),
+  // Borrado lógico (papelera, fase 8). Las deudas NO llevan columna propia: heredan el
+  // estado de su gasto (liveDebts() en server/utils/soft-delete.ts).
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  deletedBy: text('deleted_by').references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, table => [
   // Red de seguridad a nivel de esquema para la idempotencia de la derrama: aunque el guard
   // de aplicación (executeApprovedProposalCore) tenga un bug o se inserte por otra vía, la
   // DB nunca permite dos expenses para la misma propuesta.
-  uniqueIndex('expenses_origin_proposal_unique').on(table.originProposalId).where(sql`${table.originProposalId} is not null`)
+  uniqueIndex('expenses_origin_proposal_unique').on(table.originProposalId).where(sql`${table.originProposalId} is not null`),
+  index('expenses_deleted_at_idx').on(table.deletedAt)
 ])
 
 export const debts = pgTable('debts', {
