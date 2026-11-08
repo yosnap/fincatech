@@ -27,7 +27,7 @@ El admin vinculado habla con el bot en lenguaje natural; el bot usa un modelo (A
 3. Herramientas `read` se ejecutan directamente. `write`/`destructive`: no se ejecutan; se crea `telegram_pending_actions(id, chat_id, user_id, tool, input, summary, expires_at, status)` y se devuelve al modelo «pendiente de confirmación»; el bot envía el resumen con botones «Confirmar» / «Cancelar» (`callback_data` = id).
 4. `callback_query`: verifica que el chat y el usuario coinciden, que no ha caducado (10 min) y que sigue `pending`; ejecuta `runTool(..., 'telegram')` una sola vez (update atómico de estado) y edita el mensaje con el resultado.
 5. Memoria corta: últimos 20 mensajes por chat (texto, sin datos sensibles extra), con comando `/nuevo` para reiniciar.
-6. Límites: rate limit por chat, registro de tokens de entrada/salida por mensaje en logs; si falta `ANTHROPIC_API_KEY`, responder que el asistente no está configurado (las fotos siguen funcionando).
+6. Límites: rate limit por chat, registro de tokens de entrada/salida por mensaje en logs; si falta `AI_AGENT_MODEL` o el token del proveedor, responder que el asistente no está configurado (las fotos siguen funcionando).
 7. Telegram exige respuesta rápida al webhook: procesar el agente sin bloquear la respuesta 200 (lanzar la tarea y responder; el dedupe actual evita reprocesar), mostrando «escribiendo…» (`sendChatAction`).
 8. Tests: confirmación caducada, doble pulsación (solo una ejecución), usuario no admin, chat distinto.
 
