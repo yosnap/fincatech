@@ -4,6 +4,10 @@
 
 import { isValidPeriod, monthRange } from './bank-core'
 
+// Reexportado: la utilidad vive en server/utils/madrid-date.ts y la comparten el gasto, la
+// hipoteca y el OCR.
+export { todayInMadrid } from '../utils/madrid-date'
+
 // Primer mes con hipoteca configurable: en agosto de 2026 el préstamo aún no estaba (decisión
 // del usuario). También actúa como suelo del rango de relleno.
 export const MIN_MORTGAGE_MONTH = '2026-09'
@@ -15,13 +19,6 @@ export interface MortgageScheduleEntry {
   chargeDay: number
   // 'YYYY-MM' desde el que aplica este importe y día.
   effectiveFrom: string
-}
-
-// 'YYYY-MM-DD' de hoy en la zona horaria de la finca. `now` inyectable para poder testear el
-// cron sin depender del reloj real (mismo criterio que currentPeriodNow en bank-core).
-export function todayInMadrid(now: Date = new Date()): string {
-  // en-CA produce directamente 'YYYY-MM-DD'.
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(now)
 }
 
 export function lastDayOfMonth(month: string): number {

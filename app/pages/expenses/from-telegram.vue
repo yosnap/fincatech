@@ -51,6 +51,8 @@ const draft = computed<Draft | null>(() => {
 const description = ref('')
 const amount = ref('')
 const tax = ref('')
+// Fecha del ticket: la del OCR si es una fecha real no futura; hoy en Madrid si no (RT-13).
+const expenseDate = ref(todayInMadridClient())
 const selectedIds = ref<string[]>([])
 
 watchEffect(() => {
@@ -60,6 +62,8 @@ watchEffect(() => {
   description.value = parts.length > 0 ? parts.join(' — ') : 'Ticket sin datos legibles'
   amount.value = d.extraction.amountCents != null ? (d.extraction.amountCents / 100).toFixed(2) : ''
   tax.value = d.extraction.taxCents != null ? (d.extraction.taxCents / 100).toFixed(2) : ''
+  const ticketDate = parseTicketDate(d.extraction.date)
+  expenseDate.value = ticketDate && ticketDate <= todayInMadridClient() ? ticketDate : todayInMadridClient()
 })
 
 watchEffect(() => {
@@ -100,6 +104,7 @@ async function onConfirm() {
         amountCents,
         taxCents: taxCents != null && Number.isFinite(taxCents) && taxCents >= 0 ? taxCents : undefined,
         participantIds: selectedIds.value,
+        date: expenseDate.value,
         confidence: draft.value.extraction.confidence,
         costUsd: draft.value.costUsd
       }
@@ -144,6 +149,18 @@ async function onConfirm() {
             <UInput
               v-model="description"
               required
+              class="w-full"
+            />
+          </UFormField>
+
+          <UFormField
+            label="Fecha del gasto"
+            help="La fecha del ticket. Si el OCR no la leyó bien, corrígela aquí."
+          >
+            <UInput
+              v-model="expenseDate"
+              type="date"
+              :max="todayInMadridClient()"
               class="w-full"
             />
           </UFormField>

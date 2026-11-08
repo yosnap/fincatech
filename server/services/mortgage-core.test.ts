@@ -7,7 +7,6 @@ import {
   MIN_MORTGAGE_MONTH,
   mortgageMonthRange,
   planMortgageCharges,
-  todayInMadrid,
   type MortgageCandidateInput,
   type MortgageScheduleEntry
 } from './mortgage-core'
@@ -165,12 +164,5 @@ describe('findManualCandidates', () => {
     ], schedule, '2026-11-10')
 
     expect(candidates).toEqual([])
-  })
-})
-
-describe('todayInMadrid', () => {
-  it('usa la zona horaria de la finca (un UTC de las 23:00 ya es el día siguiente en Madrid)', () => {
-    expect(todayInMadrid(new Date('2026-11-08T22:30:00Z'))).toBe('2026-11-08')
-    expect(todayInMadrid(new Date('2026-11-08T23:30:00Z'))).toBe('2026-11-09')
   })
 })

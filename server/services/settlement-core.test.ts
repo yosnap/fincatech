@@ -24,6 +24,7 @@ function expense(partial: Partial<SettlementInputExpense>): SettlementInputExpen
     description: 'Recibo',
     createdBy: 'me',
     amountCents: 1000,
+    expenseDate: '2026-01-01',
     ...partial
   }
 }
@@ -131,6 +132,22 @@ describe('computeSettlement', () => {
     expect(ana.netCents).toBe(0)
     expect(ana.theyOweMeLines).toHaveLength(1)
     expect(ana.iOweThemLines).toHaveLength(1)
+  })
+
+  it('ordena las líneas por fecha del gasto, no por fecha de alta (RT-12)', () => {
+    const allDebts = [
+      debt({ id: 'd-tarde', expenseId: 'e-tarde', creditorId: 'a', amountCents: 1_000, createdAt: T0 }),
+      debt({ id: 'd-pronto', expenseId: 'e-pronto', creditorId: 'a', amountCents: 2_000, createdAt: T1 })
+    ]
+    // El gasto 'e-tarde' se dio de alta ANTES pero su fecha de gasto es posterior.
+    const allExpenses = [
+      expense({ id: 'e-tarde', description: 'Tarde', amountCents: 1_000, expenseDate: '2026-09-20' }),
+      expense({ id: 'e-pronto', description: 'Pronto', amountCents: 2_000, expenseDate: '2026-09-01' })
+    ]
+
+    const result = computeSettlement('me', allDebts, allExpenses, USERS, true)
+
+    expect(result.counterparties[0]!.iOweThemLines.map(l => l.description)).toEqual(['Pronto', 'Tarde'])
   })
 
   it('ordena contrapartes por |diferencia| descendente y agrupa varias recibos por persona', () => {

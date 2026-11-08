@@ -47,7 +47,7 @@ const detailLink = computed(() => {
           {{ side === 'debtor' ? `A ${line.counterpartyName}` : line.counterpartyName }} ·
         </template>
         {{ DEBT_STATUS_LABELS[line.status] ?? line.status }} ·
-        {{ new Date(line.createdAt).toLocaleDateString('es-ES') }}
+        {{ new Date(`${line.expenseDate}T00:00:00`).toLocaleDateString('es-ES') }}
       </p>
       <UButton
         v-if="side === 'creditor' && line.status === 'pending_confirmation'"

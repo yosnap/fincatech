@@ -4,7 +4,7 @@ import { rowsToCsv, type ExportRow } from './export-formatters'
 function row(overrides: Partial<ExportRow> = {}): ExportRow {
   return {
     id: 'expense-1',
-    createdAt: new Date('2026-07-01T00:00:00.000Z'),
+    expenseDate: '2026-07-01',
     description: 'Recibo de luz',
     type: 'manual',
     amountCents: 12345,
@@ -14,6 +14,11 @@ function row(overrides: Partial<ExportRow> = {}): ExportRow {
 }
 
 describe('rowsToCsv', () => {
+  it('publica la fecha del gasto, no la de registro', () => {
+    const csv = rowsToCsv([row({ expenseDate: '2026-06-15' })])
+    expect(csv.split('\n')[1]!.startsWith('2026-06-15,')).toBe(true)
+  })
+
   it('neutraliza descripciones que empiezan por caracteres de fórmula (CSV injection)', () => {
     const csv = rowsToCsv([row({ description: '=cmd|/c calc' })])
     const line = csv.split('\n')[1]!

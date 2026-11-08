@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { boolean, index, integer, jsonb, pgTable, real, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { boolean, date, index, integer, jsonb, pgTable, real, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { proposals } from './governance'
 import { users } from './users'
 
@@ -28,6 +28,10 @@ export const expenses = pgTable('expenses', {
   // No nulo solo para type='derrama' (Fase 7) — guard idempotente de executeApprovedProposal:
   // una propuesta aprobada nunca genera dos derramas.
   originProposalId: uuid('origin_proposal_id').references(() => proposals.id),
+  // Fecha del gasto (cuándo se pagó), distinta de `createdAt` (cuándo se registró). El admin
+  // puede corregirla; listados, exportación, estadísticas y liquidación la usan como fecha
+  // del gasto. `defaultCurrentDate` deja la columna usable por código antiguo (fase 3).
+  expenseDate: date('expense_date').notNull().default(sql`current_date`),
   // Borrado lógico (papelera, fase 8). Las deudas NO llevan columna propia: heredan el
   // estado de su gasto (liveDebts() en server/utils/soft-delete.ts).
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -39,7 +43,8 @@ export const expenses = pgTable('expenses', {
   // de aplicación (executeApprovedProposalCore) tenga un bug o se inserte por otra vía, la
   // DB nunca permite dos expenses para la misma propuesta.
   uniqueIndex('expenses_origin_proposal_unique').on(table.originProposalId).where(sql`${table.originProposalId} is not null`),
-  index('expenses_deleted_at_idx').on(table.deletedAt)
+  index('expenses_deleted_at_idx').on(table.deletedAt),
+  index('expenses_expense_date_idx').on(table.expenseDate)
 ])
 
 export const debts = pgTable('debts', {

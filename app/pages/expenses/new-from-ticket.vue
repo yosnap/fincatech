@@ -28,6 +28,9 @@ const costUsd = ref(0)
 const description = ref('')
 const amount = ref('')
 const tax = ref('')
+// Fecha del ticket: se rellena con la del OCR si viene en un formato reconocible y es una
+// fecha real no futura; si no, hoy en Madrid. Siempre editable antes de confirmar (RT-13).
+const expenseDate = ref(todayInMadridClient())
 const confidence = ref(0)
 // Todos los miembros activos preseleccionados por defecto (un gasto normalmente se reparte
 // entre todos) — el admin desmarca a quien no corresponda en vez de marcar uno a uno.
@@ -56,6 +59,8 @@ async function onExtract() {
     tax.value = result.extraction.taxCents != null ? (result.extraction.taxCents / 100).toFixed(2) : ''
     confidence.value = result.extraction.confidence
     costUsd.value = result.costUsd
+    const ticketDate = parseTicketDate(result.extraction.date)
+    expenseDate.value = ticketDate && ticketDate <= todayInMadridClient() ? ticketDate : todayInMadridClient()
     step.value = 'review'
     toast.add({ title: 'Ticket extraído', color: 'success' })
   } catch (error) {
@@ -100,6 +105,7 @@ async function onConfirm() {
       if (Number.isFinite(taxCents) && taxCents >= 0) formData.append('taxCents', String(taxCents))
     }
     formData.append('participantIds', JSON.stringify(selectedIds.value))
+    formData.append('date', expenseDate.value)
     formData.append('confidence', String(confidence.value))
     formData.append('costUsd', String(costUsd.value))
     const result = await $fetch<{ expense: { id: string } }>('/api/ocr/confirm', {
@@ -172,6 +178,18 @@ async function onConfirm() {
           <UInput
             v-model="description"
             required
+            class="w-full"
+          />
+        </UFormField>
+
+        <UFormField
+          label="Fecha del gasto"
+          help="La fecha del ticket. Si el OCR no la leyó bien, corrígela aquí."
+        >
+          <UInput
+            v-model="expenseDate"
+            type="date"
+            :max="todayInMadridClient()"
             class="w-full"
           />
         </UFormField>

@@ -184,6 +184,34 @@ describeDb('papelera — movimientos, aportes y gastos', () => {
     await bankService.purgeTransaction({ transactionId, actorId: adminId })
   })
 
+  it('la fecha del gasto se puede corregir y rechaza fechas futuras (fase 3)', async () => {
+    const expense = await expenseService.createExpense({
+      actorId: ownerId,
+      amountCents: 4_200,
+      description: `Gasto fecha ${suffix}`,
+      type: 'manual',
+      // Participantes admin+owner para no contaminar la liquidación de `otherId`, que el test
+      // siguiente usa como referencia de "sin deudas vivas".
+      participantIds: [ownerId, adminId],
+      hasProof: false,
+      expenseDate: '2026-01-15'
+    })
+    expect(expense.expenseDate).toBe('2026-01-15')
+
+    await expect(expenseService.updateExpenseDate({
+      expenseId: expense.id,
+      actorId: adminId,
+      expenseDate: '2999-01-01'
+    })).rejects.toMatchObject({ statusCode: 400 })
+
+    const updated = await expenseService.updateExpenseDate({
+      expenseId: expense.id,
+      actorId: adminId,
+      expenseDate: '2026-02-20'
+    })
+    expect(updated.expenseDate).toBe('2026-02-20')
+  })
+
   it('un gasto en la papelera sale de la liquidación de sus participantes (RT8-1)', async () => {
     const expense = await expenseService.createExpense({
       actorId: ownerId,

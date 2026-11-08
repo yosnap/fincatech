@@ -6,6 +6,8 @@ import { users } from '../../db/schema'
 import { createExpense } from '../../services/expense-service'
 import { uploadFile } from '../../services/storage'
 import { matchesDeclaredType } from '../../utils/file-signature'
+import { isValidCalendarDate } from '../../services/bank-core'
+import { isFutureMadridDate, todayInMadrid } from '../../utils/madrid-date'
 import { requireRole } from '../../utils/rbac'
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png'])
@@ -17,7 +19,10 @@ const fieldsSchema = z.object({
   taxCents: z.coerce.number().int().min(0).optional(),
   participantIds: z.string().transform(raw => JSON.parse(raw) as unknown).pipe(z.array(z.string().min(1)).min(1)),
   confidence: z.coerce.number().min(0).max(1),
-  costUsd: z.coerce.number().min(0)
+  costUsd: z.coerce.number().min(0),
+  // Fecha del ticket revisada por el humano (ISO). RT-13: se valida en servidor y no puede
+  // ser futura; sin ella, el gasto se fecha hoy en Madrid.
+  date: z.string().refine(isValidCalendarDate, 'Fecha de calendario inválida').optional()
 })
 
 // Nunca crea el gasto directamente desde la extracción OCR: el humano ya revisó/corrigió
@@ -47,6 +52,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Datos inválidos', data: parsed.error.flatten() })
   }
   const body = parsed.data
+  if (body.date && isFutureMadridDate(body.date)) {
+    throw createError({ statusCode: 400, statusMessage: 'La fecha del gasto no puede ser futura' })
+  }
 
   const participants = await db.select({ id: users.id, role: users.role, banned: users.banned })
     .from(users)
@@ -70,6 +78,7 @@ export default defineEventHandler(async (event) => {
     type: 'manual',
     participantIds: body.participantIds,
     hasProof: true,
+    expenseDate: body.date ?? todayInMadrid(),
     taxCents: body.taxCents,
     ocrConfidence: body.confidence,
     ocrCostUsd: body.costUsd,
