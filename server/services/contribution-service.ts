@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/client'
 import { bankTransactions, contributions, paymentProofs, users } from '../db/schema'
 import { writeAuditLog } from '../utils/audit'
@@ -7,6 +7,7 @@ import {
   buildQuotaGrid,
   buildTransferDescription,
   currentPeriodNow,
+  duplicateKey,
   expandQuotaPeriods,
   groupPossibleDuplicates,
   isDuplicateCheckedType,
@@ -20,6 +21,57 @@ export type ContributionType = (typeof CONTRIBUTION_TYPES)[number]
 
 export const CONTRIBUTION_METHODS = ['cash', 'transfer'] as const
 export type ContributionMethod = (typeof CONTRIBUTION_METHODS)[number]
+
+// Executor mínimo para compartir la comprobación de duplicado entre servicios (crear un
+// aporte hoy, restaurarlo de la papelera en la fase 8): siempre una transacción abierta,
+// porque el advisory lock solo tiene sentido dentro de una.
+type DuplicateGuardExecutor = Pick<typeof db, 'select' | 'execute'>
+
+interface DuplicateGuardInput {
+  memberId: string
+  amountCents: number
+  type: string
+  period: string | null
+  date: string
+  // El usuario ya vio el aviso y pidió registrar igualmente.
+  force?: boolean
+}
+
+// Comprobación de «posible duplicado» compartida por las rutas que pueden crear dos aportes
+// idénticos. Toma un `pg_advisory_xact_lock` sobre la clave de duplicado ANTES de leer: dos
+// transacciones con la misma clave se serializan (la segunda espera a que la primera
+// confirme) y la segunda ve la fila recién creada → 409. El lock se libera solo al
+// confirmar o abortar la transacción; no hay unlock explícito ni riesgo de fuga.
+export async function assertNoPossibleDuplicate(
+  tx: DuplicateGuardExecutor,
+  input: DuplicateGuardInput
+): Promise<void> {
+  if (input.force || !isDuplicateCheckedType(input.type)) return
+
+  const key = duplicateKey({
+    memberId: input.memberId,
+    amountCents: input.amountCents,
+    type: input.type,
+    period: input.period,
+    date: input.date
+  })
+  // hashtext() devuelve int4 → encaja con la firma de un argumento de pg_advisory_xact_lock.
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${key}))`)
+
+  const [existing] = await tx.select().from(contributions).where(and(
+    eq(contributions.memberId, input.memberId),
+    eq(contributions.amountCents, input.amountCents),
+    eq(contributions.type, input.type),
+    eq(contributions.date, input.date)
+  )).limit(1)
+  if (existing) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Ya existe un aporte idéntico (mismo miembro, importe, tipo y fecha)',
+      data: { code: 'possible_duplicate', existing }
+    })
+  }
+}
 
 interface CreateContributionInput {
   actorId: string
@@ -72,28 +124,23 @@ export async function createContribution(input: CreateContributionInput) {
     throw createError({ statusCode: 400, statusMessage: 'Miembro inválido: debe ser un miembro activo' })
   }
 
-  // Aviso de posible duplicado (doble envío, o miembro y admin registrando lo mismo): 409
-  // con el aporte existente para que la UI pregunte antes de crear otro igual.
-  if (!input.force && isDuplicateCheckedType(input.type)) {
-    const [existing] = await db.select().from(contributions).where(and(
-      eq(contributions.memberId, input.memberId),
-      eq(contributions.amountCents, input.amountCents),
-      eq(contributions.type, input.type),
-      eq(contributions.date, input.date)
-    )).limit(1)
-    if (existing) {
-      throw createError({
-        statusCode: 409,
-        statusMessage: 'Ya existe un aporte idéntico (mismo miembro, importe, tipo y fecha)',
-        data: { code: 'possible_duplicate', existing }
-      })
-    }
-  }
-
   const quotaPeriods = input.type === 'quota' ? expandQuotaPeriods(input.period!, months) : []
   const periods: (string | null)[] = input.type === 'quota' ? quotaPeriods : [null]
 
   return db.transaction(async (tx) => {
+    // Aviso de posible duplicado (doble envío, o miembro y admin registrando lo mismo): 409
+    // con el aporte existente para que la UI pregunte antes de crear otro igual. Va DENTRO
+    // de la transacción y con advisory lock por clave de duplicado: si se comprobara antes
+    // de abrirla, dos envíos simultáneos verían la tabla vacía y crearían ambos.
+    await assertNoPossibleDuplicate(tx, {
+      memberId: input.memberId,
+      amountCents: input.amountCents,
+      type: input.type,
+      period: input.type === 'quota' ? input.period : null,
+      date: input.date,
+      force: input.force
+    })
+
     // Transferencia = ingreso automático ya vinculado (validación sesión 1): el dinero fue
     // al banco directamente. Un único movimiento por el TOTAL del pago; las N filas de
     // cuota comparten el mismo bankTransactionId. El efectivo NO crea movimiento: queda
