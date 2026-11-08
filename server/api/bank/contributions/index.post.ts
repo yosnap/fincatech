@@ -23,7 +23,9 @@ const fieldsSchema = z.object({
   date: z.string().refine(isValidCalendarDate, 'Fecha de calendario inválida'),
   // Solo cuota: adelanto multi-mes (1-24 filas consecutivas en una transacción).
   months: z.coerce.number().int().min(1).max(24).optional(),
-  notes: z.string().optional()
+  notes: z.string().optional(),
+  // 'true' = registrar pese al aviso de posible duplicado (multipart → string).
+  force: z.enum(['true', 'false']).optional()
 }).refine(body => body.type === 'quota' || body.period === undefined, {
   message: 'Solo las cuotas mensuales llevan período',
   path: ['period']
@@ -89,7 +91,8 @@ export default defineEventHandler(async (event) => {
       date: body.date,
       months: body.months,
       notes: body.notes ?? null,
-      proof
+      proof,
+      force: body.force === 'true'
     })
     return result
   } catch (error) {

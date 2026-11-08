@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { db } from '../db/client'
 import { bankTransactions, contributions, paymentProofs, users } from '../db/schema'
 import { writeAuditLog } from '../utils/audit'
@@ -8,6 +8,8 @@ import {
   buildTransferDescription,
   currentPeriodNow,
   expandQuotaPeriods,
+  groupPossibleDuplicates,
+  isDuplicateCheckedType,
   isValidPeriod
 } from './bank-core'
 import { getActiveMembers, getSettings, type ActiveMember, type FinanceSettings } from './bank-service'
@@ -35,6 +37,8 @@ interface CreateContributionInput {
   notes?: string | null
   // Solo transfer: justificante del ticket bancario, adjunto al MOVIMIENTO auto-creado.
   proof?: { objectName: string, contentType: string }
+  // Registrar aunque exista un aporte idéntico (el usuario ya vio el aviso de duplicado).
+  force?: boolean
 }
 
 // TX: aportes + movimiento auto-creado + proof + audit en una sola transacción. Si algo
@@ -65,6 +69,24 @@ export async function createContribution(input: CreateContributionInput) {
     .where(eq(users.id, input.memberId))
   if (!member || member.banned || (member.role !== 'admin' && member.role !== 'owner')) {
     throw createError({ statusCode: 400, statusMessage: 'Miembro inválido: debe ser un miembro activo' })
+  }
+
+  // Aviso de posible duplicado (doble envío, o miembro y admin registrando lo mismo): 409
+  // con el aporte existente para que la UI pregunte antes de crear otro igual.
+  if (!input.force && isDuplicateCheckedType(input.type)) {
+    const [existing] = await db.select().from(contributions).where(and(
+      eq(contributions.memberId, input.memberId),
+      eq(contributions.amountCents, input.amountCents),
+      eq(contributions.type, input.type),
+      eq(contributions.date, input.date)
+    )).limit(1)
+    if (existing) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'Ya existe un aporte idéntico (mismo miembro, importe, tipo y fecha)',
+        data: { code: 'possible_duplicate', existing }
+      })
+    }
   }
 
   const quotaPeriods = input.type === 'quota' ? expandQuotaPeriods(input.period!, months) : []
@@ -341,4 +363,47 @@ export async function getQuotaGrid(): Promise<QuotaGrid> {
   )
 
   return { settings, activeMembers, months }
+}
+
+export interface DuplicateGroupItem {
+  id: string
+  memberId: string
+  memberName: string
+  amountCents: number
+  type: string
+  period: string | null
+  method: string
+  date: string
+  bankTransactionId: string | null
+  registeredByName: string
+  notes: string | null
+  createdAt: Date
+}
+
+// Grupos de posibles aportes duplicados ya registrados (incluye cuotas por completitud,
+// aunque el índice único las hace imposibles salvo datos antiguos). Orden por createdAt
+// dentro de cada grupo: el primero suele ser el original.
+export async function listPossibleDuplicates(): Promise<DuplicateGroupItem[][]> {
+  const rows = await db.select().from(contributions).orderBy(asc(contributions.createdAt))
+  const groups = groupPossibleDuplicates(rows)
+  if (groups.length === 0) return []
+
+  const userIds = [...new Set(groups.flat().flatMap(c => [c.memberId, c.registeredBy]))]
+  const userRows = await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, userIds))
+  const nameById = new Map(userRows.map(u => [u.id, u.name]))
+
+  return groups.map(group => group.map(c => ({
+    id: c.id,
+    memberId: c.memberId,
+    memberName: nameById.get(c.memberId) ?? c.memberId,
+    amountCents: c.amountCents,
+    type: c.type,
+    period: c.period,
+    method: c.method,
+    date: c.date,
+    bankTransactionId: c.bankTransactionId,
+    registeredByName: nameById.get(c.registeredBy) ?? c.registeredBy,
+    notes: c.notes,
+    createdAt: c.createdAt
+  })))
 }

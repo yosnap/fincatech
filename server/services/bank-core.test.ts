@@ -7,6 +7,9 @@ import {
   computeFondoComun,
   computeReconciliation,
   computeRunningBalance,
+  duplicateKey,
+  groupPossibleDuplicates,
+  isDuplicateCheckedType,
   expandQuotaPeriods,
   isValidPeriod,
   monthRange,
@@ -274,5 +277,33 @@ describe('buildQuotaGrid', () => {
     const quotaContributions = [contribution({ memberId: 'a', period: '2026-10' })]
     const grid = buildQuotaGrid(MEMBERS, quotaContributions, null, '2026-09')
     expect(grid.map(m => m.period)).toEqual(['2026-10'])
+  })
+})
+
+describe('detección de duplicados de aportes', () => {
+  const base = { memberId: 'm1', amountCents: 5000, type: 'extraordinary', period: null, date: '2026-10-03' }
+
+  it('agrupa aportes idénticos y descarta los únicos', () => {
+    const groups = groupPossibleDuplicates([
+      { ...base, id: 'a' },
+      { ...base, id: 'b' },
+      { ...base, id: 'c', amountCents: 6000 },
+      { ...base, id: 'd', memberId: 'm2' }
+    ])
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.map(c => c.id)).toEqual(['a', 'b'])
+  })
+
+  it('distingue por fecha, tipo y período', () => {
+    expect(duplicateKey(base)).not.toBe(duplicateKey({ ...base, date: '2026-10-04' }))
+    expect(duplicateKey(base)).not.toBe(duplicateKey({ ...base, type: 'pre_purchase' }))
+    expect(duplicateKey({ ...base, type: 'quota', period: '2026-10' }))
+      .not.toBe(duplicateKey({ ...base, type: 'quota', period: '2026-11' }))
+  })
+
+  it('solo avisa al registrar en tipos sin índice único', () => {
+    expect(isDuplicateCheckedType('extraordinary')).toBe(true)
+    expect(isDuplicateCheckedType('pre_purchase')).toBe(true)
+    expect(isDuplicateCheckedType('quota')).toBe(false)
   })
 })

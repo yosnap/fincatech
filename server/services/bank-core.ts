@@ -264,3 +264,38 @@ export function buildQuotaGrid(
 export function currentPeriodNow(now: Date = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
+
+// ---- Detección de posibles duplicados de aportes ----
+
+export interface DuplicateCandidate {
+  id: string
+  memberId: string
+  amountCents: number
+  type: string
+  period: string | null
+  date: string
+}
+
+// Clave de "posible duplicado": mismo miembro, importe, tipo, fecha y período. Las cuotas ya
+// están protegidas por el índice único miembro+mes; el riesgo real está en pre_purchase y
+// extraordinary (sin restricción en DB), que es donde se aplica el aviso al registrar.
+export function duplicateKey(c: Omit<DuplicateCandidate, 'id'>): string {
+  return [c.memberId, c.amountCents, c.type, c.date, c.period ?? ''].join('|')
+}
+
+export function isDuplicateCheckedType(type: string): boolean {
+  return type === 'pre_purchase' || type === 'extraordinary'
+}
+
+// Agrupa los aportes con la misma clave: solo devuelve grupos de 2 o más, preservando el
+// orden de entrada dentro de cada grupo (el llamador ordena por createdAt).
+export function groupPossibleDuplicates<T extends DuplicateCandidate>(items: T[]): T[][] {
+  const groups = new Map<string, T[]>()
+  for (const item of items) {
+    const key = duplicateKey(item)
+    const group = groups.get(key)
+    if (group) group.push(item)
+    else groups.set(key, [item])
+  }
+  return [...groups.values()].filter(group => group.length > 1)
+}
