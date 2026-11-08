@@ -1,12 +1,10 @@
-import { inArray } from 'drizzle-orm'
 import { z } from 'zod'
-import { db } from '../../db/client'
-import { users } from '../../db/schema'
 import { createExpense } from '../../services/expense-service'
 import { objectExists } from '../../services/storage'
 import { isValidCalendarDate } from '../../services/bank-core'
 import { isFutureMadridDate, todayInMadrid } from '../../utils/madrid-date'
 import { requireRole } from '../../utils/rbac'
+import { assertEligibleParticipants } from '../../validation/participants'
 
 // El objectName viaja en la URL que generó nuestro propio webhook, pero llega aquí como
 // texto libre del cliente (query param editable) — restringimos el prefijo esperado y
@@ -43,15 +41,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'La fecha del gasto no puede ser futura' })
   }
 
-  const participants = await db.select({ id: users.id, role: users.role, banned: users.banned })
-    .from(users)
-    .where(inArray(users.id, body.participantIds))
-  const validIds = new Set(
-    participants.filter(p => !p.banned && (p.role === 'admin' || p.role === 'owner')).map(p => p.id)
-  )
-  if (body.participantIds.some(id => !validIds.has(id))) {
-    throw createError({ statusCode: 400, statusMessage: 'Participantes inválidos: deben ser miembros activos (admin/owner)' })
-  }
+  await assertEligibleParticipants(body.participantIds)
 
   if (!(await objectExists(body.objectName))) {
     throw createError({ statusCode: 400, statusMessage: 'El comprobante no existe o ya expiró; envía la foto de nuevo al bot' })

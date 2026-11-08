@@ -330,7 +330,7 @@ export async function confirmBackfill(input: ConfirmBackfillInput): Promise<Back
         action: 'mortgage_charge_generated',
         entityType: 'bank_transaction',
         entityId: inserted.id,
-        metadata: { channel: 'web', month: charge.month, amountCents: charge.amountCents, date: charge.date }
+        metadata: { month: charge.month, amountCents: charge.amountCents, date: charge.date }
       }, tx)
     }
 
@@ -392,7 +392,7 @@ export async function generateDueCharges(now: Date = new Date()): Promise<{ crea
         action: 'mortgage_charge_generated',
         entityType: 'bank_transaction',
         entityId: inserted.id,
-        metadata: { channel: 'system', month: charge.month, amountCents: charge.amountCents, date: charge.date }
+        metadata: { month: charge.month, amountCents: charge.amountCents, date: charge.date }
       }, tx)
     }
 

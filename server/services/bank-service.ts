@@ -2,6 +2,8 @@ import { and, asc, eq, inArray } from 'drizzle-orm'
 import { db, type TxExecutor } from '../db/client'
 import { bankTransactions, contributions, financeSettings, paymentProofs, users } from '../db/schema'
 import { writeAuditLog } from '../utils/audit'
+import { canSeeIndividualDebt, type SessionUser } from '../utils/rbac'
+import { computeBalances, computeFondoComun, computeReconciliation } from './bank-core'
 import { assertNotTrashed, notDeleted } from '../utils/soft-delete'
 import { assertNoOtherChargeForMonth } from './mortgage-service'
 import { deleteFile } from './storage'
@@ -25,6 +27,64 @@ export async function getActiveMembers(): Promise<ActiveMember[]> {
   return db.select({ id: users.id, name: users.name, role: users.role })
     .from(users)
     .where(and(eq(users.banned, false), inArray(users.role, ['admin', 'owner'])))
+}
+
+export interface BankSummary {
+  currentCents: number
+  prePurchaseCents: number
+  cashPendingCents: number
+  cashPending: Array<{ id: string, memberId: string, memberName: string, amountCents: number, date: string }>
+  unmatchedDeposits: Array<{ id: string, date: string, amountCents: number, description: string }>
+  fondoComun: ReturnType<typeof computeFondoComun> | null
+}
+
+// Resumen de conciliación (saldo actual y pre-compra, efectivo pendiente, ingresos sin origen y
+// fondo común). Vive aquí y no en el endpoint porque la herramienta `resumen_banco` del
+// servidor MCP devuelve exactamente lo mismo (fase 4): una sola implementación, misma regla de
+// RBAC — el Invitado recibe `fondoComun = null` y la lista de efectivo pendiente vacía.
+export async function getBankSummary(actor: SessionUser): Promise<BankSummary> {
+  const canSeeIndividual = canSeeIndividualDebt(actor)
+
+  // Saldo, conciliación y fondo común se calculan SOLO con filas vivas: lo que está en la
+  // papelera no es dinero de la copropiedad (fase 8).
+  const [transactions, allContributions, activeMembers, settings] = await Promise.all([
+    db.select().from(bankTransactions).where(notDeleted(bankTransactions)),
+    db.select().from(contributions).where(notDeleted(contributions)),
+    getActiveMembers(),
+    getSettings()
+  ])
+
+  const balances = computeBalances(transactions, settings.purchaseDate)
+  const reconciliation = computeReconciliation(transactions, allContributions)
+
+  const pendingMemberIds = [...new Set(reconciliation.cashPending.map(c => c.memberId))]
+  const pendingMembers = canSeeIndividual && pendingMemberIds.length > 0
+    ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, pendingMemberIds))
+    : []
+  const nameById = new Map(pendingMembers.map(u => [u.id, u.name]))
+
+  return {
+    ...balances,
+    cashPendingCents: reconciliation.cashPendingCents,
+    cashPending: canSeeIndividual
+      ? reconciliation.cashPending.map(c => ({
+          id: c.id,
+          memberId: c.memberId,
+          memberName: nameById.get(c.memberId) ?? c.memberId,
+          amountCents: c.amountCents,
+          date: c.date
+        }))
+      : [],
+    unmatchedDeposits: reconciliation.unmatchedDeposits.map(t => ({
+      id: t.id,
+      date: t.date,
+      amountCents: t.amountCents,
+      description: t.description
+    })),
+    fondoComun: canSeeIndividual
+      ? computeFondoComun(allContributions, transactions, activeMembers)
+      : null
+  }
 }
 
 interface CreateTransactionInput {

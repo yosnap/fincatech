@@ -1,14 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { inArray } from 'drizzle-orm'
 import { z } from 'zod'
-import { db } from '../../db/client'
-import { users } from '../../db/schema'
 import { createExpense } from '../../services/expense-service'
 import { uploadFile } from '../../services/storage'
 import { matchesDeclaredType } from '../../utils/file-signature'
 import { isValidCalendarDate } from '../../services/bank-core'
 import { isFutureMadridDate, todayInMadrid } from '../../utils/madrid-date'
 import { requireRole } from '../../utils/rbac'
+import { assertEligibleParticipants } from '../../validation/participants'
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png'])
 const MAX_SIZE_BYTES = 10 * 1024 * 1024
@@ -56,15 +54,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'La fecha del gasto no puede ser futura' })
   }
 
-  const participants = await db.select({ id: users.id, role: users.role, banned: users.banned })
-    .from(users)
-    .where(inArray(users.id, body.participantIds))
-  const validIds = new Set(
-    participants.filter(p => !p.banned && (p.role === 'admin' || p.role === 'owner')).map(p => p.id)
-  )
-  if (body.participantIds.some(id => !validIds.has(id))) {
-    throw createError({ statusCode: 400, statusMessage: 'Participantes inválidos: deben ser miembros activos (admin/owner)' })
-  }
+  await assertEligibleParticipants(body.participantIds)
 
   // Subir ANTES de escribir en DB (igual que markDebtPaid en Fase 3): si la subida falla,
   // no se crea ningún gasto huérfano con hasProof=true sin comprobante real.

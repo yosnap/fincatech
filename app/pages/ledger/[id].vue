@@ -129,6 +129,30 @@ async function markPaidWithoutProof(debtId: string) {
   }
 }
 
+// Liquidar la deuda de otra persona (solo Admin, RT-14): «en nombre de», con auditoría. Mismo
+// endpoint que usa la herramienta del MCP — la web nunca queda por detrás.
+async function settleOnBehalf(debtId: string) {
+  const confirmed = await useConfirmDialog()({
+    title: 'Marcar la cuota como pagada en nombre de la otra persona',
+    description: 'La cuota quedará confirmada como cobrada. Queda registrado en la auditoría que lo hiciste tú en su nombre.',
+    confirmLabel: 'Marcar como cobrada',
+    color: 'primary'
+  })
+  if (!confirmed) return
+
+  busyDebtId.value = debtId
+  try {
+    await $fetch(`/api/debts/${debtId}/settle`, { method: 'POST' })
+    await refresh()
+    toast.add({ title: 'Cuota liquidada en nombre del deudor', color: 'success' })
+  } catch (error) {
+    const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
+    toast.add({ title: statusMessage ?? 'No se pudo liquidar la cuota', color: 'error' })
+  } finally {
+    busyDebtId.value = null
+  }
+}
+
 async function viewProof(debtId: string) {
   const result = await $fetch<{ url: string }>(`/api/debts/${debtId}/proof`)
   window.open(result.url, '_blank')
@@ -548,6 +572,21 @@ async function saveCreator() {
               O marca como pagado sin comprobante
             </UButton>
           </template>
+
+          <div
+            v-if="currentUserRole === 'admin' && debt.status !== 'confirmed' && debt.debtorId !== currentUserId"
+            class="flex justify-end"
+          >
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="soft"
+              :loading="busyDebtId === debt.id"
+              @click="settleOnBehalf(debt.id)"
+            >
+              Marcar cobrada en nombre del deudor
+            </UButton>
+          </div>
 
           <div
             v-if="debt.status === 'pending_confirmation' && (debt.creditorId === currentUserId || currentUserRole === 'admin')"
