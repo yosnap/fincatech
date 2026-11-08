@@ -32,5 +32,13 @@ Probar por qué aparecen aportes duplicados y evitar que vuelva a pasar, avisand
 - Manual: registrar dos veces el mismo extraordinario → aparece el aviso; con «Registrar igualmente» se crea.
 - El listado de duplicados muestra los casos reales encontrados en el diagnóstico.
 
-## Red Team (2026-11-08) — corrección pendiente
-- [ ] **[RT-6]** La comprobación de duplicado está fuera de la transacción: dos envíos casi simultáneos pasan ambos. Moverla dentro de `db.transaction` con `pg_advisory_xact_lock(hashtext(memberId|type|date|amountCents))` antes del `select`. Test de concurrencia (dos `createContribution` en paralelo → uno 409).
+## Red Team (2026-11-08) — corrección aplicada 2026-11-08
+- [x] **[RT-6]** La comprobación de duplicado está fuera de la transacción: dos envíos casi simultáneos pasan ambos. Moverla dentro de `db.transaction` con `pg_advisory_xact_lock(hashtext(memberId|type|date|amountCents))` antes del `select`. Test de concurrencia (dos `createContribution` en paralelo → uno 409).
+
+**Hecho:** la comprobación vive ahora en `assertNoPossibleDuplicate(tx, input)` (`server/services/contribution-service.ts`), se llama como primer paso de la transacción de `createContribution` y toma el advisory lock con la clave de `duplicateKey()` de `bank-core`. La función queda exportada para que la restauración de la papelera (fase 8) reutilice el mismo criterio y el mismo lock.
+
+**Test:** `server/services/contribution-service.integration.test.ts` (se activa solo con `TEST_DATABASE_URL`; sin ella queda `skipped` y `pnpm test` sigue siendo puro). Incluye el caso paralelo y uno determinista: una transacción rival mantiene el lock con la fila insertada y sin confirmar; la creación espera, ve la fila al confirmar la rival y responde 409. Verificado que ese test falla si se quita el `pg_advisory_xact_lock`.
+
+## Pendiente en esta fase
+- [ ] **Diagnóstico en producción (tarea 1):** requiere acceso a la BD de producción (Easypanel). No se ha podido ejecutar desde el entorno local; queda como comprobación manual con las consultas de solo lectura de la tarea 1 y la conclusión en `plans/reports/`.
+
