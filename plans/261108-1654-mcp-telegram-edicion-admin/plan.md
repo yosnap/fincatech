@@ -79,7 +79,7 @@ El admin necesita corregir datos financieros (aportes duplicados, fechas mal pue
 | 4 | [Capa de herramientas y servidor MCP](./phase-04-capa-herramientas-y-mcp.md) | Pending |
 | 5 | [Agente de Telegram](./phase-05-agente-telegram.md) | Pending |
 | 6 | [Activación y despliegue](./phase-06-activacion-y-despliegue.md) | Pending |
-| 7 | [Cargo automático de la hipoteca](./phase-07-cargo-automatico-hipoteca.md) | Pending |
+| 7 | [Cargo automático de la hipoteca](./phase-07-cargo-automatico-hipoteca.md) | Completed |
 | 8 | [Papelera de movimientos, aportes y gastos](./phase-08-papelera-movimientos-y-aportes.md) | Completed |
 
 Orden de ejecución: 1 → 2 → (corrección RT-6 de 1) → **8** → **7** → 3 → 4 → 5 → 6. Dependencias: 1→2 (el detector se reutiliza en el formulario); 2 y 3 antes de 4 (las herramientas exponen la edición nueva); 4→5→6.

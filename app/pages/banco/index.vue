@@ -12,6 +12,7 @@ interface TransactionItem {
   category: string | null
   hasProof: boolean
   balanceCentsAfter: number
+  mortgagePeriod?: string | null
 }
 
 interface CashPendingItem {
@@ -63,6 +64,7 @@ const editTarget = ref<TransactionItem | null>(null)
 const proofTarget = ref<TransactionItem | null>(null)
 const proofOpen = ref(false)
 const settingsOpen = ref(false)
+const mortgageOpen = ref(false)
 const confirm = useConfirmDialog()
 const toast = useToast()
 
@@ -169,15 +171,26 @@ watch([periodFilter, monthFilter, sortBy, () => txData.value?.transactions.lengt
       <h1 class="text-xl font-semibold">
         Cuenta bancaria
       </h1>
-      <UButton
-        v-if="isAdmin"
-        icon="i-lucide-settings-2"
-        color="neutral"
-        variant="soft"
-        @click="settingsOpen = true"
-      >
-        Configuración
-      </UButton>
+      <div class="flex items-center gap-2">
+        <UButton
+          v-if="isAdmin"
+          icon="i-lucide-landmark"
+          color="neutral"
+          variant="soft"
+          @click="mortgageOpen = true"
+        >
+          Hipoteca
+        </UButton>
+        <UButton
+          v-if="isAdmin"
+          icon="i-lucide-settings-2"
+          color="neutral"
+          variant="soft"
+          @click="settingsOpen = true"
+        >
+          Configuración
+        </UButton>
+      </div>
     </div>
 
     <BankReconciliationSummary
@@ -257,6 +270,11 @@ watch([periodFilter, monthFilter, sortBy, () => txData.value?.transactions.lengt
       v-model:open="settingsOpen"
       :settings="settings ?? null"
       @saved="refreshAll"
+    />
+
+    <BankMortgageSettings
+      v-model:open="mortgageOpen"
+      @changed="refreshAll"
     />
   </div>
 </template>

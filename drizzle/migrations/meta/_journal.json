@@ -120,6 +120,13 @@
       "when": 1794163339989,
       "tag": "0016_young_master_mold",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794164022456,
+      "tag": "0017_melodic_star_brand",
+      "breakpoints": true
     }
   ]
 }
