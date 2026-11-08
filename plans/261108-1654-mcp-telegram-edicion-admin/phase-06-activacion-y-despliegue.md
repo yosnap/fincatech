@@ -13,7 +13,9 @@ dependencies: [5]
 Bot y MCP funcionando en producción, con pasos de activación documentados y repetibles.
 
 ## Files to Create / Modify
-- Create: `scripts/telegram-set-webhook.ts` (registra webhook con `secret_token`, `allowed_updates: [message, callback_query]`, y `setMyCommands`; lee el token del entorno, nunca lo imprime)
+- **[RT-15]** Create: `server/api/admin/telegram/webhook.post.ts` y `webhook.get.ts` (solo admin): registran el webhook desde dentro del contenedor con `secret_token`, `allowed_updates: [message, callback_query]` y `setMyCommands`, y devuelven `getWebhookInfo` sin el token
+- Create: botón «Activar Telegram» y estado del webhook en la configuración de la web (admin)
+- Modify: `docker-compose.yml` / variables de Easypanel: `TZ=Europe/Madrid`
 - Modify: `.env.example` (`ANTHROPIC_API_KEY`, `TELEGRAM_AGENT_MODEL`)
 - Modify: `docs/deployment.md` (activación de Telegram y conexión MCP)
 - Modify: `docs/system-architecture.md` (capa de herramientas, MCP, agente)
@@ -21,8 +23,8 @@ Bot y MCP funcionando en producción, con pasos de activación documentados y re
 
 ## Tasks & Steps
 1. El usuario crea el bot con @BotFather y pone `TELEGRAM_BOT_TOKEN` en Easypanel; se genera `TELEGRAM_WEBHOOK_SECRET` aleatorio y `ANTHROPIC_API_KEY`. Nada de esto pasa por el chat.
-2. Ejecutar el script contra `https://<dominio>/webhook/telegram`; comprobar con `getWebhookInfo` (sin errores pendientes).
-3. Admin genera token MCP en el perfil y conecta Claude Desktop/claude.ai (conector remoto con cabecera Bearer) — documentar la configuración.
+2. Pulsar «Activar Telegram» en la web (admin); la pantalla muestra `getWebhookInfo` sin errores pendientes. En BotFather, desactivar la entrada en grupos (`/setjoingroups`).
+3. Conectar claude.ai y Claude Desktop como conector remoto `https://<dominio>/mcp` completando el flujo OAuth con la cuenta admin; documentar la configuración y cómo revocar desde el perfil.
 4. Verificación local completa (test, lint, typecheck, build), code review del diff, merge `feat/v0.17.0` → `develop`; a `main` solo con petición explícita.
 5. Prueba de humo en producción: `/link`, pregunta de solo lectura, una edición confirmada, foto de ticket.
 

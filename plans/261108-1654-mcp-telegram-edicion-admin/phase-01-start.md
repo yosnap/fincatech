@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Phase 1: Diagnóstico y detector de duplicados"
-status: completed
+status: in-progress
 priority: P1
 effort: 5h
 dependencies: []
@@ -31,3 +31,6 @@ Probar por qué aparecen aportes duplicados y evitar que vuelva a pasar, avisand
 - `pnpm test` (criterio de duplicado).
 - Manual: registrar dos veces el mismo extraordinario → aparece el aviso; con «Registrar igualmente» se crea.
 - El listado de duplicados muestra los casos reales encontrados en el diagnóstico.
+
+## Red Team (2026-11-08) — corrección pendiente
+- [ ] **[RT-6]** La comprobación de duplicado está fuera de la transacción: dos envíos casi simultáneos pasan ambos. Moverla dentro de `db.transaction` con `pg_advisory_xact_lock(hashtext(memberId|type|date|amountCents))` antes del `select`. Test de concurrencia (dos `createContribution` en paralelo → uno 409).

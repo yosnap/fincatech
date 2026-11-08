@@ -21,7 +21,7 @@ El admin configura en el banco el importe y el día de cargo de la hipoteca; cad
 | Importe | Histórico por tramos: cada entrada «importe desde el mes X». Cambiar el importe no altera los meses anteriores |
 | Día de cargo | Configurable (1-31); si el mes es más corto, último día del mes |
 | Retroactivo | Desde el mes que indique el admin (septiembre de 2026 basta; agosto fue distinto) |
-| Pagos manuales previos | Se muestran los candidatos (salidas de esos meses con el mismo importe o con «hipoteca» en la descripción) y el admin marca cuáles borrar. Nada se borra solo |
+| Pagos manuales previos | **Adoptar** (decisión del usuario tras el red-team): se muestran los candidatos y los que el admin elija pasan a ser el cargo automático de su mes (se les asigna `mortgage_period`), conservando su justificante. Los meses sin pago adoptado se crean nuevos. Nada se borra |
 
 ## Diseño
 
@@ -37,10 +37,10 @@ El admin configura en el banco el importe y el día de cargo de la hipoteca; cad
 - Create: `server/db/schema/mortgage.ts` (`mortgageSchedule`); Modify: `server/db/schema/bank.ts` (`mortgagePeriod` + índice, `mortgageGeneratedThrough`), `server/db/schema/index.ts`
 - Create: migración vía `pnpm db:generate`
 - Create: `server/services/mortgage-core.ts` + `mortgage-core.test.ts` (importe por mes, fecha de cargo con recorte a fin de mes, meses pendientes, detección de candidatos)
-- Create: `server/services/mortgage-service.ts` (listar/añadir/editar/borrar tramos, `generateDueCharges`, `listManualCandidates`, `deleteManualCandidates`)
-- Create: `server/api/bank/mortgage/index.get.ts`, `index.post.ts`, `[id].patch.ts`, `[id].delete.ts`, `candidates.get.ts`, `candidates/delete.post.ts` (todo solo admin)
+- Create: `server/services/mortgage-service.ts` (listar/añadir/editar/borrar tramos, `previewBackfill`, `confirmBackfill` (adopta + crea en una tx), `generateDueCharges`)
+- Create: `server/api/bank/mortgage/index.get.ts`, `index.post.ts`, `[id].patch.ts`, `[id].delete.ts`, `backfill/preview.get.ts`, `backfill/confirm.post.ts` (todo solo admin)
 - Create: `server/plugins/mortgage-scheduler.ts`
-- Create: `app/components/bank/MortgageSettings.vue` (tramos + alta/edición) y `app/components/bank/MortgageCandidatesDialog.vue` (lista con casillas y «Borrar seleccionados»)
+- Create: `app/components/bank/MortgageSettings.vue` (tramos + alta/edición) y `app/components/bank/MortgageCandidatesDialog.vue` (vista previa: meses a crear y pagos manuales con casillas «Adoptar como cargo de hipoteca»)
 - Modify: `app/pages/banco/index.vue` (acceso desde configuración), `app/components/bank/TransactionList.vue` (etiqueta «Automático»)
 - Modify (fase 4): herramientas `ver_hipoteca`, `configurar_hipoteca`, `listar_pagos_hipoteca_manuales`
 
@@ -55,6 +55,13 @@ El admin configura en el banco el importe y el día de cargo de la hipoteca; cad
 
 ## Verification
 - `pnpm test` (mortgage-core), `pnpm lint`, `pnpm typecheck`.
-- Local: tramo de septiembre de 2026 → se crean septiembre, octubre y noviembre (si su día ya pasó); salen como candidatos los pagos manuales equivalentes; al borrarlos el saldo queda igual que antes.
+- Local: tramo de septiembre de 2026 → se crean septiembre, octubre y noviembre (si su día ya pasó); salen como candidatos los pagos manuales equivalentes; al adoptarlos el saldo queda exactamente igual que antes y los justificantes se conservan.
 - Reiniciar el servidor no duplica cargos; borrar el cargo de un mes no lo recrea el cron.
 - Cambiar el importe desde diciembre no modifica septiembre a noviembre.
+
+## Red Team (2026-11-08) — sustituye a los puntos 4, 6 y 7 del diseño donde contradigan
+- **[RT-9] Flujo único previsualizar → confirmar, en una sola transacción:** la vista previa lista meses a crear y candidatos manuales (con indicador de justificante); al confirmar, los candidatos elegidos se **adoptan** (`mortgage_period = mes`) y se crean solo los meses restantes. No se usa `deleteTransaction`; nunca se borran justificantes.
+- **[RT-10]** El relleno **solo crea meses que faltan; nunca modifica cargos existentes**. Editar un cargo automático con el editor de movimientos lo convierte en manual (`mortgage_period = null`, con aviso en la UI) para que nada lo vuelva a tocar. Borrar o mover un tramo no altera cargos ya creados.
+- **[RT-10]** Marca de agua guardada con upsert de la fila `global` (o tabla propia); avanza al confirmar el relleno y en cada ejecución del cron.
+- **[RT-10]** Validación `effective_from >= '2026-09'`. Las herramientas `configurar_hipoteca` y de adopción son `destructive`; la confirmación indica «Se crearán N cargos (meses…) y se adoptarán M pagos».
+- Fechas con la utilidad Madrid compartida y `today` inyectable; auditoría del cron con canal `system`.

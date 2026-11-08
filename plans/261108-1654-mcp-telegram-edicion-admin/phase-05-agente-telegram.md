@@ -34,3 +34,10 @@ El admin vinculado habla con el bot en lenguaje natural; el bot usa Claude con l
 ## Verification
 - `pnpm test`.
 - Manual con bot de pruebas: «¿cuánto hay en el banco?», «muéstrame aportes duplicados», «cambia la fecha del aporte de X al 5/10» → Confirmar → cambio aplicado y visible en la web; «Cancelar» no cambia nada.
+
+## Red Team (2026-11-08)
+- **[RT-1] Crítico:** rechazar cualquier update con `chat.type !== 'private'` (incluido `/link`, con mensaje). Guardar `telegram_user_id` (`from.id`) en `telegram_links` y exigir `from.id === telegram_user_id` en mensajes y en `callback_query.from.id`. Test: update desde grupo → rechazo; callback de otro usuario → rechazo.
+- **[RT-2]** `/link`: token guardado hasheado; consumo atómico (`update … where id = ? and used_at is null and expires_at > now() returning`); si el admin ya tenía otro chat, avisar al chat anterior; mostrar en el perfil el `@username` vinculado con botón «Desvincular».
+- **[RT-7]** Respuestas del agente en texto plano o HTML escapado, con `link_preview_options: { is_disabled: true }`; neutralizar URLs que no sean del dominio de la app; trocear en bloques de 4000 caracteres y reintentar en texto plano ante un 400; los campos libres de las salidas de herramientas se envuelven como datos y se truncan; el system prompt limita filas por respuesta.
+- **[RT-8]** `telegram_pending_actions.status`: `pending → executing → done | failed`, con `result` / `error`; al arrancar, los `executing` huérfanos pasan a `failed` y se avisa al chat. Al confirmar se vuelve a comprobar `role = admin`, `!banned` y `!pendingApproval`, y que `callback_query.from.id` es el vinculado. El resultado (o la cancelación) se añade a la memoria del chat como mensaje sintético. Cola por chat (`Map<chatId, Promise>`, una réplica) y timeout global del bucle. Siempre se envía un mensaje de error al chat si algo falla.
+- Las fotos de ticket siguen funcionando para propietarios vinculados en chat privado; solo el texto libre al agente exige admin.
