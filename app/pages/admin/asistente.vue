@@ -26,9 +26,14 @@ interface ToolTestResult {
   error: string | null
 }
 
+// Atajos conocidos; «Otro» admite cualquier API compatible con OpenAI (`/models` y
+// `/chat/completions` con function calling) escribiendo su URL base.
+const CUSTOM_PROVIDER = 'custom'
 const PROVIDERS = [
   { label: 'Nan Builders', value: 'https://api.nan.builders/v1' },
-  { label: 'OpenRouter', value: 'https://openrouter.ai/api/v1' }
+  { label: 'OpenRouter', value: 'https://openrouter.ai/api/v1' },
+  { label: 'OpenAI', value: 'https://api.openai.com/v1' },
+  { label: 'Otro compatible con OpenAI', value: CUSTOM_PROVIDER }
 ]
 
 const { data } = await useFetch<SettingsView>('/api/admin/ai-agent')
@@ -48,11 +53,22 @@ watch(data, (value) => {
   if (!value) return
   enabled.value = value.enabled
   baseUrl.value = value.baseUrl
+  customProvider.value = false
   model.value = value.model ?? undefined
   apiKey.value = ''
 }, { immediate: true })
 
 const normalizedBaseUrl = computed(() => baseUrl.value.trim().replace(/\/+$/, ''))
+const customProvider = ref(false)
+const provider = computed({
+  get: () => customProvider.value
+    ? CUSTOM_PROVIDER
+    : (PROVIDERS.find(item => item.value === normalizedBaseUrl.value)?.value ?? CUSTOM_PROVIDER),
+  set: (value: string) => {
+    customProvider.value = value === CUSTOM_PROVIDER
+    baseUrl.value = customProvider.value ? '' : value
+  }
+})
 const providerChanged = computed(() => !!data.value && normalizedBaseUrl.value !== data.value.baseUrl)
 const modelItems = computed(() => {
   const items = [...models.value]
@@ -215,26 +231,23 @@ async function resetToEnv() {
 
         <UFormField
           label="Proveedor"
-          description="URL base de la API (debe empezar por https://)."
+          description="Cualquier API compatible con OpenAI que admita herramientas (function calling)."
         >
           <div class="flex flex-col gap-2">
+            <USelect
+              v-model="provider"
+              :items="PROVIDERS"
+              class="w-full"
+            />
             <UInput
+              v-if="provider === CUSTOM_PROVIDER"
               v-model="baseUrl"
               class="w-full"
-              placeholder="https://api.nan.builders/v1"
+              placeholder="https://api.ejemplo.com/v1"
             />
-            <div class="flex flex-wrap gap-2">
-              <UButton
-                v-for="provider in PROVIDERS"
-                :key="provider.value"
-                size="xs"
-                color="neutral"
-                variant="soft"
-                @click="baseUrl = provider.value"
-              >
-                {{ provider.label }}
-              </UButton>
-            </div>
+            <p class="text-xs text-muted">
+              URL base: {{ normalizedBaseUrl || 'sin definir' }}. Suele terminar en /v1; debe empezar por https://.
+            </p>
           </div>
         </UFormField>
 
