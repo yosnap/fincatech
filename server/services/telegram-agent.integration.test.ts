@@ -20,9 +20,12 @@ vi.mock('./ai-chat-client', async (importOriginal) => {
   const original = await importOriginal<typeof import('./ai-chat-client')>()
   return {
     ...original,
-    isAgentConfigured: () => true,
     chatCompletion: vi.fn(async () => scripted.shift())
   }
+})
+vi.mock('./ai-agent-config', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./ai-agent-config')>()
+  return { ...original, getAgentConnection: async () => ({ baseUrl: 'https://ia.example/v1', apiKey: 'clave-de-prueba', model: 'modelo' }) }
 })
 
 describeDb('agente de Telegram — bucle de herramientas', () => {

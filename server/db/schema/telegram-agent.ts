@@ -1,4 +1,4 @@
-import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import { users } from './users'
 
 // Acción de escritura propuesta por el agente de Telegram y pendiente de que el Admin pulse
@@ -35,3 +35,18 @@ export const telegramConversationMessages = pgTable('telegram_conversation_messa
   content: text('content').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 }, table => [index('telegram_conversation_messages_chat_idx').on(table.chatId, table.createdAt)])
+
+// Ajustes del asistente IA editables por el Admin desde la web (una única fila, id = 'global').
+// Cada campo nulo cae a su variable de entorno. La clave del proveedor se guarda cifrada
+// (AES-256-GCM con una clave derivada de BETTER_AUTH_SECRET) y nunca se devuelve al cliente.
+export const aiAgentSettings = pgTable('ai_agent_settings', {
+  id: text('id').primaryKey(),
+  enabled: boolean('enabled').notNull().default(true),
+  baseUrl: text('base_url'),
+  model: text('model'),
+  apiKeyCiphertext: text('api_key_ciphertext'),
+  // Últimos 4 caracteres de la clave, para que el Admin reconozca cuál hay guardada.
+  apiKeyHint: text('api_key_hint'),
+  updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+})

@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import type { ToolDefinition } from '../tools/types'
 import { getEnv } from '../utils/env'
+import { getAgentConnection } from './ai-agent-config'
+import type { ProviderConnection } from './ai-agent-config'
+
+export type { ProviderConnection }
 
 // Cliente mínimo de `/chat/completions` para cualquier API compatible con OpenAI con function
 // calling (Nan Builders, OpenRouter…). Sin SDK: mismo patrón `fetch` que `vision-ocr.ts`.
@@ -35,13 +39,28 @@ export interface ChatTool {
 const REQUEST_TIMEOUT_MS = 60_000
 const RETRY_DELAY_MS = 1_500
 
-function agentApiKey(): string | undefined {
-  const env = getEnv()
-  return env.AI_AGENT_API_KEY ?? env.NAN_BUILDERS_API_KEY
+function providerHeaders(connection: ProviderConnection): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${connection.apiKey}`
+  }
+  // OpenRouter: cabeceras opcionales de atribución de la app.
+  if (connection.baseUrl.includes('openrouter.ai')) {
+    headers['HTTP-Referer'] = getEnv().BETTER_AUTH_URL
+    headers['X-Title'] = 'FincaTech'
+  }
+  return headers
 }
 
-export function isAgentConfigured(): boolean {
-  return !!getEnv().AI_AGENT_MODEL && !!agentApiKey()
+// Modelos que ofrece el proveedor (`GET /models`), ordenados por nombre.
+export async function listProviderModels(connection: ProviderConnection): Promise<string[]> {
+  const response = await fetch(`${connection.baseUrl}/models`, {
+    headers: providerHeaders(connection),
+    signal: AbortSignal.timeout(20_000)
+  })
+  if (!response.ok) throw new Error(`Proveedor IA respondió ${response.status}`)
+  const json = await response.json() as { data?: { id?: unknown }[] }
+  return (json.data ?? []).map(model => model.id).filter((id): id is string => typeof id === 'string').sort()
 }
 
 // zod 4 → JSON Schema (entrada). Lo que zod no puede representar (refine, transform) se
@@ -71,24 +90,18 @@ function isRetryable(status: number): boolean {
 }
 
 // `deadline` (epoch ms) acota la llamada completa, reintento incluido: nunca se espera más
-// allá del plazo global del bucle del agente.
-export async function chatCompletion(messages: ChatMessage[], tools: ChatTool[], deadline = Date.now() + REQUEST_TIMEOUT_MS): Promise<ChatCompletionResult> {
-  const env = getEnv()
-  const apiKey = agentApiKey()
-  if (!env.AI_AGENT_MODEL || !apiKey) {
-    throw new Error('Agente IA no configurado (faltan AI_AGENT_MODEL o el token del proveedor)')
-  }
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${apiKey}`
-  }
-  // OpenRouter: cabeceras opcionales de atribución de la app.
-  if (env.AI_AGENT_BASE_URL.includes('openrouter.ai')) {
-    headers['HTTP-Referer'] = env.BETTER_AUTH_URL
-    headers['X-Title'] = 'FincaTech'
-  }
-  const body = JSON.stringify({ model: env.AI_AGENT_MODEL, messages, tools, tool_choice: 'auto' })
+// allá del plazo global del bucle del agente. Sin `connection` se usa la configuración efectiva
+// (el agente la resuelve una vez por mensaje y la pasa, para no cambiar de proveedor a mitad).
+export async function chatCompletion(
+  messages: ChatMessage[],
+  tools: ChatTool[],
+  deadline = Date.now() + REQUEST_TIMEOUT_MS,
+  connection?: ProviderConnection
+): Promise<ChatCompletionResult> {
+  const target = connection ?? await getAgentConnection()
+  if (!target?.model) throw new Error('Agente IA no configurado (falta activarlo, el modelo o la clave del proveedor)')
+  const headers = providerHeaders(target)
+  const body = JSON.stringify({ model: target.model, messages, tools, tool_choice: 'auto' })
 
   // Un único reintento ante 429/5xx o fallo de red, solo si queda margen en el plazo.
   const canRetry = () => deadline - Date.now() > RETRY_DELAY_MS + 5_000
@@ -97,7 +110,7 @@ export async function chatCompletion(messages: ChatMessage[], tools: ChatTool[],
     if (remaining <= 0) throw new Error('Plazo agotado esperando al proveedor IA')
     let response: Response
     try {
-      response = await fetch(`${env.AI_AGENT_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
+      response = await fetch(`${target.baseUrl}/chat/completions`, {
         method: 'POST',
         headers,
         body,

@@ -99,6 +99,17 @@ banco?», «cambia la fecha del aporte X al 5/10») y comprueba en los logs
 Si el modelo de Nan Builders no lo hace bien, usa uno de OpenRouter con soporte de
 herramientas.
 
+Estas variables son solo el valor por defecto: un Admin puede cambiar proveedor, clave,
+modelo y activación desde **Cuenta → Asistente IA** (`/admin/asistente`), que además tiene un
+botón «Probar» que comprueba el *function calling* con las herramientas reales sin ejecutar
+nada. Lo guardado en la web manda sobre el entorno. La clave guardada se cifra con
+AES-256-GCM usando una clave derivada de `BETTER_AUTH_SECRET`: si se rota ese secreto, la
+clave guardada deja de poder leerse y hay que volver a introducirla. La clave del entorno solo
+se usa con `AI_AGENT_BASE_URL` del entorno, y cambiar la URL desde la web borra la clave
+guardada, para que una clave nunca se envíe a otro proveedor. Si en la web eliges los mismos
+valores que el entorno, no se fijan: siguen al entorno si cambia después. «Restablecer valores
+del servidor» borra todo lo guardado (clave incluida) y vuelve a las variables.
+
 Recomendado igualmente configurar SMTP real cuanto antes: sin él, invitar a nuevos
 propietarios exige compartir el enlace de invitación a mano cada vez.
 

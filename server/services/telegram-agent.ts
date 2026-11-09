@@ -4,7 +4,9 @@ import { telegramConversationMessages } from '../db/schema'
 import { TOOLS, getTool, runTool } from '../tools/registry'
 import { getEnv } from '../utils/env'
 import type { SessionUser } from '../utils/rbac'
-import { chatCompletion, isAgentConfigured, toChatTools } from './ai-chat-client'
+import { getAgentConnection } from './ai-agent-config'
+import type { ProviderConnection } from './ai-agent-config'
+import { chatCompletion, toChatTools } from './ai-chat-client'
 import type { ChatMessage } from './ai-chat-client'
 import { createPendingAction } from './telegram-confirmations'
 import { sendTelegramMessage, sendTelegramTyping } from './telegram-bot'
@@ -172,7 +174,8 @@ async function executeToolCall(
   return { output: wrapToolOutput({ estado: 'pendiente_de_confirmacion', mensaje: 'El admin debe pulsar Confirmar en el mensaje enviado.' }) }
 }
 
-async function runAgentLoop(actor: SessionUser, chatId: string, userText: string): Promise<string> {
+// La conexión se resuelve una vez por mensaje: un cambio de ajustes a mitad no cambia de proveedor.
+async function runAgentLoop(actor: SessionUser, chatId: string, userText: string, connection: ProviderConnection): Promise<string> {
   const tools = toChatTools(TOOLS)
   const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt() },
@@ -187,7 +190,7 @@ async function runAgentLoop(actor: SessionUser, chatId: string, userText: string
   try {
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
       if (Date.now() > deadline) return TIMEOUT_MESSAGE
-      const { message, usage } = await chatCompletion(messages, tools, deadline)
+      const { message, usage } = await chatCompletion(messages, tools, deadline, connection)
       promptTokens += usage?.prompt_tokens ?? 0
       completionTokens += usage?.completion_tokens ?? 0
 
@@ -223,7 +226,8 @@ async function runAgentLoop(actor: SessionUser, chatId: string, userText: string
 export function handleAgentMessage(actor: SessionUser, chatId: string, text: string): Promise<void> {
   return enqueue(chatId, async () => {
     try {
-      if (!isAgentConfigured()) {
+      const connection = await getAgentConnection()
+      if (!connection) {
         await sendTelegramMessage(chatId, NOT_CONFIGURED_MESSAGE)
         return
       }
@@ -232,7 +236,7 @@ export function handleAgentMessage(actor: SessionUser, chatId: string, text: str
         return
       }
       await sendTelegramTyping(chatId).catch(() => {})
-      const reply = sanitizeAgentReply(await runAgentLoop(actor, chatId, text), getEnv().BETTER_AUTH_URL)
+      const reply = sanitizeAgentReply(await runAgentLoop(actor, chatId, text, connection), getEnv().BETTER_AUTH_URL)
       await saveTurn(chatId, text, reply)
       await sendTelegramMessage(chatId, reply)
     } catch (error) {

@@ -155,6 +155,13 @@
       "when": 1794195055779,
       "tag": "0021_zippy_anita_blake",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1794214253549,
+      "tag": "0022_tearful_longshot",
+      "breakpoints": true
     }
   ]
 }
