@@ -1,10 +1,10 @@
-import { inArray } from 'drizzle-orm'
 import { z } from 'zod'
-import { db } from '../../db/client'
-import { users } from '../../db/schema'
 import { createExpense } from '../../services/expense-service'
 import { objectExists } from '../../services/storage'
+import { isValidCalendarDate } from '../../services/bank-core'
+import { isFutureMadridDate, todayInMadrid } from '../../utils/madrid-date'
 import { requireRole } from '../../utils/rbac'
+import { assertEligibleParticipants } from '../../validation/participants'
 
 // El objectName viaja en la URL que generó nuestro propio webhook, pero llega aquí como
 // texto libre del cliente (query param editable) — restringimos el prefijo esperado y
@@ -20,7 +20,10 @@ const bodySchema = z.object({
   taxCents: z.number().int().min(0).optional(),
   participantIds: z.array(z.string().min(1)).min(1),
   confidence: z.number().min(0).max(1),
-  costUsd: z.number().min(0)
+  costUsd: z.number().min(0),
+  // Fecha del ticket revisada por el humano (ISO). RT-13: se valida en servidor y no puede
+  // ser futura; sin ella, el gasto se fecha hoy en Madrid.
+  date: z.string().refine(isValidCalendarDate, 'Fecha de calendario inválida').optional()
 })
 
 // Variante de confirm.post.ts (Fase 4) para el flujo del bot de Telegram: el comprobante ya
@@ -34,16 +37,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Datos inválidos', data: parsed.error.flatten() })
   }
   const body = parsed.data
-
-  const participants = await db.select({ id: users.id, role: users.role, banned: users.banned })
-    .from(users)
-    .where(inArray(users.id, body.participantIds))
-  const validIds = new Set(
-    participants.filter(p => !p.banned && (p.role === 'admin' || p.role === 'owner')).map(p => p.id)
-  )
-  if (body.participantIds.some(id => !validIds.has(id))) {
-    throw createError({ statusCode: 400, statusMessage: 'Participantes inválidos: deben ser miembros activos (admin/owner)' })
+  if (body.date && isFutureMadridDate(body.date)) {
+    throw createError({ statusCode: 400, statusMessage: 'La fecha del gasto no puede ser futura' })
   }
+
+  await assertEligibleParticipants(body.participantIds)
 
   if (!(await objectExists(body.objectName))) {
     throw createError({ statusCode: 400, statusMessage: 'El comprobante no existe o ya expiró; envía la foto de nuevo al bot' })
@@ -57,6 +55,7 @@ export default defineEventHandler(async (event) => {
     type: 'manual',
     participantIds: body.participantIds,
     hasProof: true,
+    expenseDate: body.date ?? todayInMadrid(),
     ocrConfidence: body.confidence,
     ocrCostUsd: body.costUsd,
     proof: { objectName: body.objectName, contentType: body.contentType }

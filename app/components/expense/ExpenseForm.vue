@@ -16,6 +16,9 @@ const TYPE_OPTIONS = [
 
 const amount = ref('')
 const description = ref('')
+// Fecha del gasto (cuándo se pagó): por defecto hoy en Madrid; se puede corregir aquí o
+// después desde el detalle del gasto (solo Admin).
+const expenseDate = ref(todayInMadridClient())
 const type = ref<'manual' | 'bank_receipt'>('manual')
 const hasProof = ref(true)
 const proofFile = ref<File | null>(null)
@@ -51,6 +54,7 @@ async function onSubmit() {
     const formData = new FormData()
     formData.append('amountCents', String(amountCents))
     formData.append('description', description.value)
+    formData.append('date', expenseDate.value)
     formData.append('type', type.value)
     formData.append('participantIds', JSON.stringify(selectedIds.value))
     formData.append('hasProof', String(hasProof.value))
@@ -59,6 +63,7 @@ async function onSubmit() {
     await $fetch('/api/expenses', { method: 'POST', body: formData })
     amount.value = ''
     description.value = ''
+    expenseDate.value = todayInMadridClient()
     proofFile.value = null
     emit('created')
     toast.add({ title: 'Gasto creado', color: 'success' })

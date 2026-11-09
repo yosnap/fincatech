@@ -1,6 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { db } from '../../../db/client'
-import { debts, paymentProofs } from '../../../db/schema'
+import { debts, expenses, paymentProofs } from '../../../db/schema'
 import { getSignedUrl } from '../../../services/storage'
 import { requireRole } from '../../../utils/rbac'
 
@@ -20,6 +20,14 @@ export default defineEventHandler(async (event) => {
   const isInvolved = actor.role === 'admin' || debt.debtorId === actor.id || debt.creditorId === actor.id
   if (!isInvolved) {
     throw createError({ statusCode: 403, statusMessage: 'No tienes acceso a este comprobante' })
+  }
+
+  // RT8-6: si el gasto del que cuelga la cuota está en la papelera, el comprobante solo lo ve
+  // el Admin. Para el resto, la cuota no existe (y por eso tampoco aparece en la liquidación).
+  const [expense] = await db.select({ deletedAt: expenses.deletedAt })
+    .from(expenses).where(eq(expenses.id, debt.expenseId))
+  if (expense?.deletedAt && actor.role !== 'admin') {
+    throw createError({ statusCode: 404, statusMessage: 'Cuota no encontrada' })
   }
 
   const proof = await db.query.paymentProofs.findFirst({

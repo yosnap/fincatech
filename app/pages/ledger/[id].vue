@@ -37,6 +37,8 @@ interface ExpenseDetail {
   status: string
   createdBy?: string
   createdByName: string
+  // Fecha del gasto ('YYYY-MM-DD'): la que cuenta para listados, exportación y liquidación.
+  expenseDate: string
   createdAt: string
   participantSnapshot?: ParticipantShare[]
   participants?: ParticipantWithName[]
@@ -127,6 +129,30 @@ async function markPaidWithoutProof(debtId: string) {
   }
 }
 
+// Liquidar la deuda de otra persona (solo Admin, RT-14): «en nombre de», con auditoría. Mismo
+// endpoint que usa la herramienta del MCP — la web nunca queda por detrás.
+async function settleOnBehalf(debtId: string) {
+  const confirmed = await useConfirmDialog()({
+    title: 'Marcar la cuota como pagada en nombre de la otra persona',
+    description: 'La cuota quedará confirmada como cobrada. Queda registrado en la auditoría que lo hiciste tú en su nombre.',
+    confirmLabel: 'Marcar como cobrada',
+    color: 'primary'
+  })
+  if (!confirmed) return
+
+  busyDebtId.value = debtId
+  try {
+    await $fetch(`/api/debts/${debtId}/settle`, { method: 'POST' })
+    await refresh()
+    toast.add({ title: 'Cuota liquidada en nombre del deudor', color: 'success' })
+  } catch (error) {
+    const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
+    toast.add({ title: statusMessage ?? 'No se pudo liquidar la cuota', color: 'error' })
+  } finally {
+    busyDebtId.value = null
+  }
+}
+
 async function viewProof(debtId: string) {
   const result = await $fetch<{ url: string }>(`/api/debts/${debtId}/proof`)
   window.open(result.url, '_blank')
@@ -150,9 +176,9 @@ const deleting = ref(false)
 
 async function onDeleteExpense() {
   const confirmed = await useConfirmDialog()({
-    title: 'Eliminar gasto',
-    description: 'No se puede deshacer. Solo es posible si ninguna cuota tiene pagos registrados.',
-    confirmLabel: 'Eliminar',
+    title: 'Mover gasto a la papelera',
+    description: 'Solo es posible si ninguna cuota tiene pagos registrados. Podrás restaurarlo desde la papelera y su justificante se conserva.',
+    confirmLabel: 'Mover a la papelera',
     color: 'error'
   })
   if (!confirmed) return
@@ -161,11 +187,11 @@ async function onDeleteExpense() {
   try {
     const deleteUrl: string = `/api/expenses/${route.params.id}`
     await $fetch(deleteUrl, { method: 'DELETE' })
-    toast.add({ title: 'Gasto eliminado', color: 'success' })
+    toast.add({ title: 'Gasto movido a la papelera', color: 'success' })
     await navigateTo(backTo.value)
   } catch (error) {
     const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
-    toast.add({ title: statusMessage ?? 'No se pudo eliminar el gasto', color: 'error' })
+    toast.add({ title: statusMessage ?? 'No se pudo mover el gasto a la papelera', color: 'error' })
   } finally {
     deleting.value = false
   }
@@ -214,6 +240,36 @@ async function saveParticipants() {
     toast.add({ title: statusMessage ?? 'No se pudieron actualizar los participantes', color: 'error' })
   } finally {
     savingParticipants.value = false
+  }
+}
+
+// Cambiar la fecha del gasto (solo Admin, fase 3): corrige un ticket con la fecha mal puesta
+// sin tocar importes, deudas ni participantes.
+const editingDate = ref(false)
+const savingDate = ref(false)
+const selectedDate = ref('')
+
+function openDateEditor() {
+  selectedDate.value = data.value?.expense.expenseDate ?? todayInMadridClient()
+  editingDate.value = true
+}
+
+async function saveDate() {
+  if (!selectedDate.value) return
+  savingDate.value = true
+  try {
+    await $fetch(`/api/expenses/${route.params.id}/date`, {
+      method: 'PATCH',
+      body: { date: selectedDate.value }
+    })
+    editingDate.value = false
+    await refresh()
+    toast.add({ title: 'Fecha del gasto actualizada', color: 'success' })
+  } catch (error) {
+    const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
+    toast.add({ title: statusMessage ?? 'No se pudo cambiar la fecha', color: 'error' })
+  } finally {
+    savingDate.value = false
   }
 }
 
@@ -379,6 +435,44 @@ async function saveCreator() {
         {{ data.expense.hasProof ? 'Con comprobante' : 'Sin comprobante' }} ·
         dado de alta por {{ data.expense.createdByName }}
       </p>
+      <p class="text-sm">
+        Fecha del gasto:
+        <span class="font-medium">{{ new Date(`${data.expense.expenseDate}T00:00:00`).toLocaleDateString('es-ES') }}</span>
+        <UButton
+          v-if="currentUserRole === 'admin'"
+          size="xs"
+          variant="link"
+          class="ml-1 px-1"
+          @click="openDateEditor"
+        >
+          Cambiar fecha
+        </UButton>
+      </p>
+      <div
+        v-if="editingDate"
+        class="flex items-end gap-2"
+      >
+        <UInput
+          v-model="selectedDate"
+          type="date"
+          :max="todayInMadridClient()"
+        />
+        <UButton
+          size="sm"
+          :loading="savingDate"
+          @click="saveDate"
+        >
+          Guardar
+        </UButton>
+        <UButton
+          size="sm"
+          color="neutral"
+          variant="outline"
+          @click="editingDate = false"
+        >
+          Cancelar
+        </UButton>
+      </div>
       <UButton
         v-if="canSeeExpenseProof && data.expense.hasStoredProof"
         size="xs"
@@ -478,6 +572,21 @@ async function saveCreator() {
               O marca como pagado sin comprobante
             </UButton>
           </template>
+
+          <div
+            v-if="currentUserRole === 'admin' && debt.status !== 'confirmed' && debt.debtorId !== currentUserId"
+            class="flex justify-end"
+          >
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="soft"
+              :loading="busyDebtId === debt.id"
+              @click="settleOnBehalf(debt.id)"
+            >
+              Marcar cobrada en nombre del deudor
+            </UButton>
+          </div>
 
           <div
             v-if="debt.status === 'pending_confirmation' && (debt.creditorId === currentUserId || currentUserRole === 'admin')"

@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { inArray } from 'drizzle-orm'
 import { z } from 'zod'
-import { db } from '../../db/client'
-import { users } from '../../db/schema'
 import { createExpense } from '../../services/expense-service'
 import { uploadFile } from '../../services/storage'
 import { matchesDeclaredType } from '../../utils/file-signature'
+import { isValidCalendarDate } from '../../services/bank-core'
+import { isFutureMadridDate, todayInMadrid } from '../../utils/madrid-date'
 import { requireRole } from '../../utils/rbac'
+import { assertEligibleParticipants } from '../../validation/participants'
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png'])
 const MAX_SIZE_BYTES = 10 * 1024 * 1024
@@ -17,7 +17,10 @@ const fieldsSchema = z.object({
   taxCents: z.coerce.number().int().min(0).optional(),
   participantIds: z.string().transform(raw => JSON.parse(raw) as unknown).pipe(z.array(z.string().min(1)).min(1)),
   confidence: z.coerce.number().min(0).max(1),
-  costUsd: z.coerce.number().min(0)
+  costUsd: z.coerce.number().min(0),
+  // Fecha del ticket revisada por el humano (ISO). RT-13: se valida en servidor y no puede
+  // ser futura; sin ella, el gasto se fecha hoy en Madrid.
+  date: z.string().refine(isValidCalendarDate, 'Fecha de calendario inválida').optional()
 })
 
 // Nunca crea el gasto directamente desde la extracción OCR: el humano ya revisó/corrigió
@@ -47,16 +50,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Datos inválidos', data: parsed.error.flatten() })
   }
   const body = parsed.data
-
-  const participants = await db.select({ id: users.id, role: users.role, banned: users.banned })
-    .from(users)
-    .where(inArray(users.id, body.participantIds))
-  const validIds = new Set(
-    participants.filter(p => !p.banned && (p.role === 'admin' || p.role === 'owner')).map(p => p.id)
-  )
-  if (body.participantIds.some(id => !validIds.has(id))) {
-    throw createError({ statusCode: 400, statusMessage: 'Participantes inválidos: deben ser miembros activos (admin/owner)' })
+  if (body.date && isFutureMadridDate(body.date)) {
+    throw createError({ statusCode: 400, statusMessage: 'La fecha del gasto no puede ser futura' })
   }
+
+  await assertEligibleParticipants(body.participantIds)
 
   // Subir ANTES de escribir en DB (igual que markDebtPaid en Fase 3): si la subida falla,
   // no se crea ningún gasto huérfano con hasProof=true sin comprobante real.
@@ -70,6 +68,7 @@ export default defineEventHandler(async (event) => {
     type: 'manual',
     participantIds: body.participantIds,
     hasProof: true,
+    expenseDate: body.date ?? todayInMadrid(),
     taxCents: body.taxCents,
     ocrConfidence: body.confidence,
     ocrCostUsd: body.costUsd,

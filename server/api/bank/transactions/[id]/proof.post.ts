@@ -19,10 +19,15 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Falta id de movimiento' })
   }
 
-  const [existing] = await db.select({ hasProof: bankTransactions.hasProof })
+  const [existing] = await db.select({ hasProof: bankTransactions.hasProof, deletedAt: bankTransactions.deletedAt })
     .from(bankTransactions).where(eq(bankTransactions.id, transactionId))
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'Movimiento no encontrado' })
+  }
+  // Comprobación temprana para no subir el archivo a MinIO y borrarlo después; el servicio
+  // vuelve a comprobarlo bajo el FOR UPDATE de su transacción.
+  if (existing.deletedAt) {
+    throw createError({ statusCode: 409, statusMessage: 'El movimiento está en la papelera: restáuralo antes de adjuntar el justificante' })
   }
   if (existing.hasProof) {
     throw createError({ statusCode: 409, statusMessage: 'El movimiento ya tiene justificante' })

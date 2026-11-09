@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { inArray } from 'drizzle-orm'
 import { z } from 'zod'
-import { db } from '../../db/client'
-import { users } from '../../db/schema'
 import { createExpense } from '../../services/expense-service'
+import { isValidCalendarDate } from '../../services/bank-core'
 import { uploadFile } from '../../services/storage'
 import { matchesDeclaredType } from '../../utils/file-signature'
+import { isFutureMadridDate, todayInMadrid } from '../../utils/madrid-date'
 import { requireRole } from '../../utils/rbac'
+import { assertEligibleParticipants } from '../../validation/participants'
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'application/pdf'])
 const MAX_SIZE_BYTES = 10 * 1024 * 1024
@@ -17,7 +17,9 @@ const fieldsSchema = z.object({
   description: z.string().min(1),
   type: z.enum(['manual', 'bank_receipt']),
   participantIds: z.string().transform(raw => JSON.parse(raw) as unknown).pipe(z.array(z.string().min(1)).min(1)),
-  hasProof: z.enum(['true', 'false']).transform(v => v === 'true')
+  hasProof: z.enum(['true', 'false']).transform(v => v === 'true'),
+  // Fecha del gasto (cuándo se pagó). Opcional: sin ella es hoy en Madrid.
+  date: z.string().refine(isValidCalendarDate, 'Fecha de calendario inválida').optional()
 })
 
 // Solo Admin/Propietario crean gastos (PRD §3.3: el Invitado no puede crear ni editar).
@@ -36,6 +38,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Datos inválidos', data: parsed.error.flatten() })
   }
   const body = parsed.data
+  if (body.date && isFutureMadridDate(body.date)) {
+    throw createError({ statusCode: 400, statusMessage: 'La fecha del gasto no puede ser futura' })
+  }
 
   const file = formData?.find(part => part.name === 'proof')
   let proof: { objectName: string, contentType: string } | undefined
@@ -57,17 +62,7 @@ export default defineEventHandler(async (event) => {
     proof = { objectName, contentType: file.type }
   }
 
-  const participants = await db.select({ id: users.id, role: users.role, banned: users.banned })
-    .from(users)
-    .where(inArray(users.id, body.participantIds))
-
-  const validIds = new Set(
-    participants.filter(p => !p.banned && (p.role === 'admin' || p.role === 'owner')).map(p => p.id)
-  )
-  const invalidIds = body.participantIds.filter(id => !validIds.has(id))
-  if (invalidIds.length > 0) {
-    throw createError({ statusCode: 400, statusMessage: 'Participantes inválidos: deben ser miembros activos (admin/owner)' })
-  }
+  await assertEligibleParticipants(body.participantIds)
 
   const expense = await createExpense({
     actorId: actor.id,
@@ -77,6 +72,7 @@ export default defineEventHandler(async (event) => {
     type: body.type,
     participantIds: body.participantIds,
     hasProof: body.hasProof,
+    expenseDate: body.date ?? todayInMadrid(),
     proof
   })
 

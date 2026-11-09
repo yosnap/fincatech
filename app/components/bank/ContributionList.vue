@@ -34,6 +34,7 @@ defineProps<{
 const emit = defineEmits<{
   link: [contribution: ContributionItem]
   unlink: [contribution: ContributionItem]
+  edit: [contribution: ContributionItem]
   delete: [contribution: ContributionItem]
 }>()
 
@@ -107,6 +108,17 @@ const METHOD_LABELS: Record<string, string> = {
             aria-label="Desvincular del ingreso"
             title="Desvincular del ingreso"
             @click="emit('unlink', contribution)"
+          />
+
+          <UButton
+            v-if="isAdmin"
+            icon="i-lucide-pencil"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            aria-label="Editar aporte"
+            title="Editar aporte"
+            @click="emit('edit', contribution)"
           />
 
           <UButton

@@ -1,9 +1,7 @@
-import { inArray } from 'drizzle-orm'
 import { z } from 'zod'
-import { db } from '../../../db/client'
-import { users } from '../../../db/schema'
 import { updateExpenseParticipants } from '../../../services/expense-service'
 import { requireRole } from '../../../utils/rbac'
+import { assertEligibleParticipants } from '../../../validation/participants'
 
 const bodySchema = z.object({
   participantIds: z.array(z.string().min(1)).min(1)
@@ -23,16 +21,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Datos inválidos', data: parsed.error.flatten() })
   }
 
-  const participants = await db.select({ id: users.id, role: users.role, banned: users.banned })
-    .from(users)
-    .where(inArray(users.id, parsed.data.participantIds))
-  const validIds = new Set(
-    participants.filter(p => !p.banned && (p.role === 'admin' || p.role === 'owner')).map(p => p.id)
-  )
-  const invalidIds = parsed.data.participantIds.filter(pid => !validIds.has(pid))
-  if (invalidIds.length > 0) {
-    throw createError({ statusCode: 400, statusMessage: 'Participantes inválidos: deben ser miembros activos (admin/owner)' })
-  }
+  await assertEligibleParticipants(parsed.data.participantIds)
 
   const expense = await updateExpenseParticipants({
     expenseId: id,

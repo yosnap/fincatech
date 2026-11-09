@@ -2,7 +2,8 @@ import PDFDocument from 'pdfkit'
 
 export interface ExportRow {
   id: string
-  createdAt: Date
+  // Fecha del gasto ('YYYY-MM-DD'): es la que se publica en el CSV/PDF, no la de registro.
+  expenseDate: string
   description: string
   type: string
   amountCents: number
@@ -41,7 +42,7 @@ export function rowsToCsv(rows: ExportRow[]): string {
   const lines = [header.join(',')]
   for (const row of rows) {
     const base = [
-      row.createdAt.toISOString().slice(0, 10),
+      row.expenseDate,
       csvEscape(row.description),
       row.type,
       formatEuros(row.amountCents),
@@ -79,7 +80,7 @@ export function rowsToPdf(rows: ExportRow[], range: { start: string, end: string
 
     doc.fontSize(9)
     for (const row of rows) {
-      const line = `${row.createdAt.toISOString().slice(0, 10)}  |  ${TYPE_LABELS[row.type] ?? row.type}  |  ${row.description}  |  ${formatEuros(row.amountCents)} €  |  ${row.status}`
+      const line = `${row.expenseDate}  |  ${TYPE_LABELS[row.type] ?? row.type}  |  ${row.description}  |  ${formatEuros(row.amountCents)} €  |  ${row.status}`
       doc.fillColor('black').fontSize(9).text(line)
       for (const debt of row.debts ?? []) {
         doc.fillColor('gray').fontSize(8).text(`    → deudor ${debt.debtorId}: ${formatEuros(debt.amountCents)} € (${debt.status})`)

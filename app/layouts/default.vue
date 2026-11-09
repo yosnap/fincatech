@@ -54,6 +54,7 @@ const navLinks = computed<NavigationMenuItem[]>(() => {
   const accountChildren = [{ label: 'Mi perfil', icon: 'i-lucide-user', to: '/profile' }]
   if (session.value.user.role === 'admin') {
     accountChildren.push({ label: 'Miembros', icon: 'i-lucide-users', to: '/members' })
+    accountChildren.push({ label: 'Asistente IA', icon: 'i-lucide-bot', to: '/admin/asistente' })
     accountChildren.push({ label: 'Papelera', icon: 'i-lucide-trash-2', to: '/admin/trash' })
   }
   links.push({ label: 'Cuenta', icon: 'i-lucide-circle-user', children: accountChildren })

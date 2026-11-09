@@ -17,6 +17,7 @@
   "dependencies": {
     "@iconify-json/lucide": "^1.2.114",
     "@iconify-json/simple-icons": "^1.2.87",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@nuxt/ui": "^4.9.0",
     "better-auth": "^1.6.23",
     "drizzle-kit": "^0.31.10",
