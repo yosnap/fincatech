@@ -36,19 +36,39 @@ const submitting = ref(false)
 const adopted = ref<string[]>([])
 const toast = useToast()
 
-watch(open, async (isOpen) => {
-  if (!isOpen) return
+// Mes en curso en Madrid ('AAAA-MM'): tope y valor por defecto de «Hasta».
+const currentMonth = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit' }).format(new Date())
+const until = ref(currentMonth)
+
+async function loadPreview() {
   loading.value = true
   try {
-    preview.value = await $fetch<Preview>('/api/bank/mortgage/backfill/preview')
+    preview.value = await $fetch<Preview>('/api/bank/mortgage/backfill/preview', { query: { until: until.value } })
     adopted.value = (preview.value?.candidates ?? [])
       .filter(candidate => candidate.amountMatches)
       .map(candidate => candidate.id)
-  } catch {
-    toast.add({ title: 'No se pudo previsualizar el relleno', color: 'error' })
+  } catch (error) {
+    const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
+    toast.add({ title: statusMessage ?? 'No se pudo previsualizar el relleno', color: 'error' })
   } finally {
     loading.value = false
   }
+}
+
+watch(open, (isOpen) => {
+  if (!isOpen) return
+  until.value = currentMonth
+  void loadPreview()
+})
+
+watch(until, (value, previous) => {
+  if (!open.value || value === previous) return
+  // Un valor vacío o futuro no es válido: se vuelve al mes en curso.
+  if (!/^\d{4}-\d{2}$/.test(value) || value > currentMonth) {
+    until.value = currentMonth
+    return
+  }
+  void loadPreview()
 })
 
 const monthsToCreateAfterAdoption = computed(() => {
@@ -71,7 +91,7 @@ async function confirm() {
   try {
     const result = await $fetch<{ created: PlannedCharge[], adopted: unknown[], toRestore: string[] }>(
       '/api/bank/mortgage/backfill/confirm',
-      { method: 'POST', body: { adoptTransactionIds: adopted.value } }
+      { method: 'POST', body: { adoptTransactionIds: adopted.value, until: until.value } }
     )
     const restoreNote = result.toRestore.length > 0
       ? ` · ${result.toRestore.length} mes(es) con cargo en la papelera: restáuralo desde /admin/trash`
@@ -96,6 +116,17 @@ async function confirm() {
   >
     <template #content>
       <div class="flex max-h-[80vh] flex-col gap-4 overflow-y-auto p-6">
+        <UFormField
+          label="Rellenar hasta"
+          description="Se crean los meses que falten desde el inicio del primer tramo hasta este mes, incluido."
+        >
+          <UInput
+            v-model="until"
+            type="month"
+            :max="currentMonth"
+          />
+        </UFormField>
+
         <p
           v-if="loading"
           class="text-sm text-muted"

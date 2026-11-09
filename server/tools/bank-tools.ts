@@ -241,13 +241,14 @@ export const bankTools = [
 
   defineTool({
     name: 'rellenar_hipoteca',
-    description: 'Crea los cargos de hipoteca que falten hasta hoy y adopta como cargo del mes los pagos manuales indicados (no se borra nada). No modifica cargos existentes.',
+    description: 'Crea los cargos de hipoteca que falten desde el primer tramo hasta el mes indicado en `hasta` (AAAA-MM; por defecto, el mes en curso) y adopta como cargo del mes los pagos manuales indicados (no se borra nada). No modifica cargos existentes ni crea meses futuros.',
     kind: 'destructive',
     inputSchema: z.object({
-      adoptarMovimientoIds: z.array(z.string().uuid()).default([])
+      adoptarMovimientoIds: z.array(z.string().uuid()).default([]),
+      hasta: z.string().regex(/^\d{4}-\d{2}$/).optional()
     }),
     handler: async (actor, input) => {
-      const result = await confirmBackfill({ actorId: actor.id, adoptTransactionIds: input.adoptarMovimientoIds })
+      const result = await confirmBackfill({ actorId: actor.id, adoptTransactionIds: input.adoptarMovimientoIds, until: input.hasta })
       return {
         mesesCreados: result.created.map(charge => charge.month),
         mesesAdoptados: result.adopted.map(row => row.month),

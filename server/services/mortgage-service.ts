@@ -214,8 +214,20 @@ export interface MortgageBackfillPreview {
   candidates: MortgageManualCandidate[]
 }
 
-export async function previewBackfill(now: Date = new Date()): Promise<MortgageBackfillPreview> {
+// `until` ('YYYY-MM'): último mes a rellenar; por defecto, el mes en curso.
+export function assertValidUntil(until: string | undefined, today: string) {
+  if (until === undefined) return
+  if (!isValidPeriod(until)) {
+    throw createError({ statusCode: 400, statusMessage: 'El mes «hasta» debe tener el formato AAAA-MM' })
+  }
+  if (until > today.slice(0, 7)) {
+    throw createError({ statusCode: 400, statusMessage: 'No se pueden rellenar meses futuros' })
+  }
+}
+
+export async function previewBackfill(now: Date = new Date(), until?: string): Promise<MortgageBackfillPreview> {
   const today = todayInMadrid(now)
+  assertValidUntil(until, today)
   const [schedule, charges, transactions] = await Promise.all([
     listScheduleRows(),
     listCargoRows(),
@@ -226,7 +238,7 @@ export async function previewBackfill(now: Date = new Date()): Promise<MortgageB
     month: charge.month,
     deleted: charge.deletedAt !== null
   }))
-  const plan = planMortgageCharges({ schedule, today, existing })
+  const plan = planMortgageCharges({ schedule, today, existing, until })
   const missingMonths = new Set(plan.toCreate.map(charge => charge.month))
   const candidates = findManualCandidates(transactions, schedule, today)
     .filter(candidate => missingMonths.has(candidate.month))
@@ -238,6 +250,8 @@ interface ConfirmBackfillInput {
   actorId: string
   // Pagos manuales que el admin adopta como cargo automático de su mes (conservan justificante).
   adoptTransactionIds?: string[]
+  // Último mes a rellenar (incluido); por defecto, el mes en curso.
+  until?: string
   now?: Date
 }
 
@@ -251,6 +265,7 @@ interface BackfillResult {
 // (RT-10). Un mes con cargo en la papelera no se recrea: se avisa para restaurarlo.
 export async function confirmBackfill(input: ConfirmBackfillInput): Promise<BackfillResult & { toRestore: string[] }> {
   const today = todayInMadrid(input.now ?? new Date())
+  assertValidUntil(input.until, today)
 
   return db.transaction(async (tx) => {
     // Advisory lock: el cron y un relleno manual no pueden crear el mismo mes a la vez.
@@ -266,6 +281,7 @@ export async function confirmBackfill(input: ConfirmBackfillInput): Promise<Back
     const plan = planMortgageCharges({
       schedule,
       today,
+      until: input.until,
       existing: charges.map(charge => ({ month: charge.month, deleted: charge.deletedAt !== null }))
     })
     const missingMonths = new Set(plan.toCreate.map(charge => charge.month))
@@ -334,7 +350,9 @@ export async function confirmBackfill(input: ConfirmBackfillInput): Promise<Back
       }, tx)
     }
 
-    // La marca avanza al mes en curso: un cargo borrado a mano no reaparece al día siguiente.
+    // La marca avanza al mes en curso aunque se rellene hasta un mes anterior: el cron no crea
+    // por su cuenta los meses que el admin dejó fuera (se rellenan luego con este mismo botón),
+    // y un cargo borrado a mano no reaparece al día siguiente.
     await setWatermark(tx, today.slice(0, 7))
 
     await writeAuditLog({
@@ -342,7 +360,7 @@ export async function confirmBackfill(input: ConfirmBackfillInput): Promise<Back
       action: 'mortgage_backfill_confirmed',
       entityType: 'finance_settings',
       entityId: GLOBAL_SETTINGS_ID,
-      metadata: { created: created.map(c => c.month), adopted: adopted.map(a => a.month), toRestore: plan.toRestore }
+      metadata: { created: created.map(c => c.month), adopted: adopted.map(a => a.month), toRestore: plan.toRestore, until: input.until ?? today.slice(0, 7) }
     }, tx)
 
     return { created, adopted, toRestore: plan.toRestore }

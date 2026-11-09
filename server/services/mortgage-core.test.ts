@@ -74,6 +74,12 @@ describe('mortgageMonthRange', () => {
     expect(mortgageMonthRange(schedule, '2026-11-20', '2026-10')).toEqual(['2026-10', '2026-11'])
     expect(mortgageMonthRange([], '2026-11-20')).toEqual([])
   })
+  it('corta en `until` si es anterior al mes de hoy y nunca pasa del mes de hoy', () => {
+    const schedule = [entry({ effectiveFrom: '2026-09' })]
+    expect(mortgageMonthRange(schedule, '2026-11-20', null, '2026-09')).toEqual(['2026-09'])
+    expect(mortgageMonthRange(schedule, '2026-11-20', null, '2027-03')).toEqual(['2026-09', '2026-10', '2026-11'])
+    expect(mortgageMonthRange(schedule, '2026-11-20', null, '2026-08')).toEqual([])
+  })
 })
 
 describe('planMortgageCharges', () => {

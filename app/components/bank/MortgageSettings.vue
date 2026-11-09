@@ -241,6 +241,12 @@ async function deleteEntry(entry: ScheduleEntry) {
           </UButton>
         </div>
 
+        <!-- Dentro del contenido: en el slot por defecto de UModal haría de disparador. -->
+        <BankMortgageBackfillDialog
+          v-model:open="previewOpen"
+          @confirmed="loadOverview(); emit('changed')"
+        />
+
         <div class="flex justify-end">
           <UButton
             label="Cerrar"
@@ -251,10 +257,5 @@ async function deleteEntry(entry: ScheduleEntry) {
         </div>
       </div>
     </template>
-
-    <BankMortgageBackfillDialog
-      v-model:open="previewOpen"
-      @confirmed="loadOverview(); emit('changed')"
-    />
   </UModal>
 </template>

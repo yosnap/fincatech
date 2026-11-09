@@ -45,16 +45,18 @@ export function amountForMonth(schedule: MortgageScheduleEntry[], month: string)
   return winner
 }
 
-// Rango de meses con hipoteca: desde el primer tramo (o `from`) hasta el mes de hoy. No se
-// generan meses futuros.
-export function mortgageMonthRange(schedule: MortgageScheduleEntry[], today: string, from?: string | null): string[] {
+// Rango de meses con hipoteca: desde el primer tramo (o `from`) hasta el mes de hoy, o hasta
+// `until` si es anterior. Nunca se generan meses futuros.
+export function mortgageMonthRange(schedule: MortgageScheduleEntry[], today: string, from?: string | null, until?: string | null): string[] {
   const first = schedule.reduce<string | null>(
     (min, entry) => (min === null || entry.effectiveFrom < min ? entry.effectiveFrom : min),
     null
   )
   const start = from ?? first
   if (!start || !isValidPeriod(start)) return []
-  return monthRange(start, today.slice(0, 7))
+  const currentMonth = today.slice(0, 7)
+  const end = until && isValidPeriod(until) && until < currentMonth ? until : currentMonth
+  return monthRange(start, end)
 }
 
 export interface ExistingMortgageMonth {
@@ -87,12 +89,14 @@ export function planMortgageCharges(input: {
   today: string
   existing: ExistingMortgageMonth[]
   from?: string | null
+  // Último mes a rellenar (incluido). Por defecto, el mes en curso.
+  until?: string | null
   requireDayPassed?: boolean
 }): MortgagePlan {
   const plan: MortgagePlan = { toCreate: [], toRestore: [], pendingDay: [] }
   const existingByMonth = new Map(input.existing.map(row => [row.month, row]))
 
-  for (const month of mortgageMonthRange(input.schedule, input.today, input.from)) {
+  for (const month of mortgageMonthRange(input.schedule, input.today, input.from, input.until)) {
     const entry = amountForMonth(input.schedule, month)
     if (!entry) continue
 
