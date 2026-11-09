@@ -5,15 +5,15 @@ export default defineNuxtConfig({
     '@nuxt/ui'
   ],
 
-  // Sin sourcemaps del servidor en el build: reducen a la mitad la memoria del empaquetado de
-  // Nitro y en producción no se usan.
-  sourcemap: { server: false, client: false },
-
   devtools: {
     enabled: true
   },
 
   css: ['~/assets/css/main.css'],
+
+  // Sin sourcemaps del servidor en el build: reducen a la mitad la memoria del empaquetado de
+  // Nitro y en producción no se usan.
+  sourcemap: { server: false, client: false },
 
   // Puerto fijo (no el 3000 por defecto de Nuxt): BETTER_AUTH_URL del .env apunta aquí y
   // Better Auth rechaza con INVALID_ORIGIN cualquier petición de navegador que llegue por
