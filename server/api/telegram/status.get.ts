@@ -6,5 +6,10 @@ import { requireRole } from '../../utils/rbac'
 export default defineEventHandler(async (event) => {
   const actor = requireRole(event, ['admin', 'owner', 'guest'])
   const link = await db.query.telegramLinks.findFirst({ where: eq(telegramLinks.userId, actor.id) })
-  return { linked: !!link }
+  // Un vínculo sin `telegramUserId` es anterior al endurecimiento: el bot exige volver a vincular.
+  return {
+    linked: !!link,
+    username: link?.telegramUsername ?? null,
+    needsRelink: !!link && !link.telegramUserId
+  }
 })

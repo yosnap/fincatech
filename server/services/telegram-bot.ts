@@ -10,15 +10,86 @@ function apiUrl(method: string): string {
   return `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`
 }
 
-export async function sendTelegramMessage(chatId: string, text: string): Promise<void> {
-  const response = await fetch(apiUrl('sendMessage'), {
+// Telegram limita un mensaje a 4096 caracteres; se trocea con margen.
+export const TELEGRAM_CHUNK_SIZE = 4000
+
+export interface InlineButton {
+  text: string
+  callback_data: string
+}
+
+export interface SendMessageOptions {
+  // Teclado inline (filas de botones) para confirmaciones.
+  buttons?: InlineButton[][]
+}
+
+async function callTelegram<T = unknown>(method: string, body: Record<string, unknown>): Promise<T> {
+  const response = await fetch(apiUrl(method), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: false })
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000)
   })
-  if (!response.ok) {
-    throw new Error(`Telegram sendMessage falló: ${response.status}`)
+  const json = await response.json().catch(() => ({})) as { ok?: boolean, result?: T, description?: string }
+  if (!response.ok || !json.ok) {
+    throw new Error(`Telegram ${method} falló: ${response.status} ${json.description ?? ''}`.trim())
   }
+  return json.result as T
+}
+
+// Parte un texto largo en bloques <= TELEGRAM_CHUNK_SIZE, cortando preferentemente en un salto
+// de línea para no partir frases.
+export function chunkTelegramText(text: string, size = TELEGRAM_CHUNK_SIZE): string[] {
+  const chunks: string[] = []
+  let rest = text
+  while (rest.length > size) {
+    const cut = rest.lastIndexOf('\n', size)
+    const at = cut > size / 2 ? cut : size
+    chunks.push(rest.slice(0, at))
+    rest = rest.slice(at).replace(/^\n/, '')
+  }
+  if (rest.length > 0 || chunks.length === 0) chunks.push(rest)
+  return chunks
+}
+
+// Envía texto PLANO (sin parse_mode: el texto del modelo o de los datos nunca se interpreta
+// como formato) y sin vista previa de enlaces. Los botones van en el último bloque. Devuelve
+// el message_id del último mensaje enviado.
+export async function sendTelegramMessage(chatId: string, text: string, options: SendMessageOptions = {}): Promise<number | undefined> {
+  const chunks = chunkTelegramText(text)
+  let lastId: number | undefined
+  for (const [index, chunk] of chunks.entries()) {
+    const isLast = index === chunks.length - 1
+    const result = await callTelegram<{ message_id: number }>('sendMessage', {
+      chat_id: chatId,
+      text: chunk,
+      link_preview_options: { is_disabled: true },
+      ...(isLast && options.buttons ? { reply_markup: { inline_keyboard: options.buttons } } : {})
+    })
+    lastId = result.message_id
+  }
+  return lastId
+}
+
+// Edita un mensaje ya enviado (resultado de una confirmación) y le quita los botones.
+export async function editTelegramMessage(chatId: string, messageId: number, text: string): Promise<void> {
+  await callTelegram('editMessageText', {
+    chat_id: chatId,
+    message_id: messageId,
+    text: chunkTelegramText(text)[0],
+    link_preview_options: { is_disabled: true },
+    reply_markup: { inline_keyboard: [] }
+  })
+}
+
+// Obligatorio tras cada pulsación de botón: si no, el cliente deja el botón «cargando».
+export async function answerTelegramCallback(callbackQueryId: string, text?: string): Promise<void> {
+  await callTelegram('answerCallbackQuery', { callback_query_id: callbackQueryId, ...(text ? { text } : {}) })
+}
+
+// Muestra «escribiendo…» en el chat (dura unos 5 s o hasta el siguiente mensaje).
+export async function sendTelegramTyping(chatId: string): Promise<void> {
+  await callTelegram('sendChatAction', { chat_id: chatId, action: 'typing' })
 }
 
 // Descarga un archivo de Telegram por file_id: primero resuelve la ruta (getFile), luego
