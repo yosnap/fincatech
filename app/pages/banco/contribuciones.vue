@@ -57,6 +57,7 @@ interface TransactionItem {
   amountCents: number
   description: string
   category: string | null
+  linkedCents?: number
 }
 
 const session = authClient.useSession()
