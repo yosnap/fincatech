@@ -5,6 +5,10 @@ export default defineNuxtConfig({
     '@nuxt/ui'
   ],
 
+  // Sin sourcemaps del servidor en el build: reducen a la mitad la memoria del empaquetado de
+  // Nitro y en producción no se usan.
+  sourcemap: { server: false, client: false },
+
   devtools: {
     enabled: true
   },

@@ -6,6 +6,9 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
+# El empaquetado del servidor (Nitro) supera el heap por defecto de Node (~2 GB) desde que
+# entraron el servidor MCP y el agente: sin esto el build muere por falta de memoria.
+ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN pnpm build
 
 FROM base AS runner
