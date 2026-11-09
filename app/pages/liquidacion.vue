@@ -7,6 +7,8 @@ interface SettlementLine {
   description: string
   amountCents: number
   status: string
+  // Fecha del gasto ('YYYY-MM-DD'): ordena y fecha la línea (no la de alta).
+  expenseDate: string
   createdAt: string
 }
 
@@ -65,7 +67,7 @@ function linesOf(person: CounterpartySettlement): FlatLine[] {
   return [
     ...person.theyOweMeLines.map(l => ({ ...l, direction: 'they_owe_me' as const })),
     ...person.iOweThemLines.map(l => ({ ...l, direction: 'i_owe_them' as const }))
-  ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  ].sort((a, b) => a.expenseDate.localeCompare(b.expenseDate) || a.createdAt.localeCompare(b.createdAt))
 }
 
 function netBadgeColor(netCents: number): 'success' | 'error' | 'neutral' {
@@ -218,7 +220,7 @@ const includeBank = ref(false)
                 class="size-3"
                 :class="line.direction === 'they_owe_me' ? 'text-success' : 'text-error'"
               />
-              {{ new Date(line.createdAt).toLocaleDateString('es-ES') }} · {{ DEBT_STATUS_LABELS[line.status] ?? line.status }}
+              {{ new Date(`${line.expenseDate}T00:00:00`).toLocaleDateString('es-ES') }} · {{ DEBT_STATUS_LABELS[line.status] ?? line.status }}
             </p>
           </div>
           <p

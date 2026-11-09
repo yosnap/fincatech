@@ -1,12 +1,9 @@
-import { desc, isNull } from 'drizzle-orm'
-import { db } from '../../db/client'
-import { tasks } from '../../db/schema'
+import { listTasks } from '../../services/task-service'
 import { requireRole } from '../../utils/rbac'
 
 // Las tareas descartadas quedan ocultas del listado normal — solo visibles en la papelera
-// de Admin (GET /api/admin/trash).
+// de Admin (GET /api/admin/trash). La lógica vive en server/services/task-service.ts.
 export default defineEventHandler(async (event) => {
   requireRole(event, ['admin', 'owner', 'guest'])
-  const rows = await db.query.tasks.findMany({ where: isNull(tasks.discardedAt), orderBy: [desc(tasks.createdAt)] })
-  return { tasks: rows }
+  return { tasks: await listTasks() }
 })

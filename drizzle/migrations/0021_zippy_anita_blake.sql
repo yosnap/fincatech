@@ -1,0 +1,1 @@
+ALTER TABLE "telegram_pending_actions" ADD COLUMN "executing_at" timestamp with time zone;

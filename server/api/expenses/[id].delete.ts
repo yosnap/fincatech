@@ -1,9 +1,9 @@
-import { deleteExpense } from '../../services/expense-service'
+import { trashExpense } from '../../services/expense-service'
 import { requireRole } from '../../utils/rbac'
 
-// Admin elimina cualquier gasto; Propietario solo los que él mismo dio de alta (ver
-// deleteExpense en expense-service.ts). Borrado duro, bloqueado si alguna cuota ya tiene
-// rastro de pago.
+// Papelera (fase 8): Admin mueve cualquier gasto; Propietario solo los que él mismo dio de
+// alta (ver trashExpense en expense-service.ts). Se bloquea si alguna cuota ya tiene rastro
+// de pago, igual que el borrado de antes.
 export default defineEventHandler(async (event) => {
   const actor = requireRole(event, ['admin', 'owner'])
   const id = getRouterParam(event, 'id')
@@ -11,6 +11,5 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Falta id de gasto' })
   }
 
-  await deleteExpense({ expenseId: id, actorId: actor.id, actorRole: actor.role })
-  return { success: true }
+  return trashExpense({ expenseId: id, actorId: actor.id, actorRole: actor.role })
 })

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { DuplicateItem } from '~/components/bank/DuplicateContributionsCard.vue'
 import { authClient } from '~/utils/auth-client'
 
 definePageMeta({ middleware: ['auth'] })
@@ -71,10 +72,25 @@ const { data: contributionsData, refresh: refreshContributions } = await useFetc
 const { data: quotaGrid, refresh: refreshQuotaGrid } = await useFetch<QuotaGridResponse>('/api/bank/contributions/grid')
 const { data: txData, refresh: refreshTransactions } = await useFetch<{ transactions: TransactionItem[] }>('/api/bank/transactions')
 
+// Posibles duplicados: solo Admin (el endpoint devuelve 403 al resto), así que se pide
+// únicamente cuando la sesión confirma el rol.
+const { data: duplicatesData, refresh: refreshDuplicates } = useFetch<{ groups: DuplicateItem[][] }>(
+  '/api/bank/contributions/duplicates',
+  { immediate: false, server: false }
+)
+watch(isAdmin, (admin) => {
+  if (admin) refreshDuplicates()
+}, { immediate: true })
+
 // Incluye los movimientos: el LinkDepositDialog lista depósitos a partir de ellos y una
 // vinculación reciente cambia qué queda "sin aporte asociado".
 async function refreshAll() {
-  await Promise.all([refreshContributions(), refreshQuotaGrid(), refreshTransactions()])
+  await Promise.all([
+    refreshContributions(),
+    refreshQuotaGrid(),
+    refreshTransactions(),
+    isAdmin.value ? refreshDuplicates() : Promise.resolve()
+  ])
 }
 
 const allContributions = computed(() => contributionsData.value?.contributions ?? [])
@@ -95,6 +111,15 @@ function openForm(preset: { memberId?: string, period?: string, type?: 'quota' |
 
 function onGridRegister(memberId: string, period: string) {
   openForm({ memberId, period, type: 'quota' })
+}
+
+// ---- Edición (solo Admin) ----
+const editTarget = ref<ContributionItem | null>(null)
+const editOpen = ref(false)
+
+function onEdit(contribution: ContributionItem) {
+  editTarget.value = contribution
+  editOpen.value = true
 }
 
 // ---- Vinculación ----
@@ -127,21 +152,21 @@ async function onUnlink(contribution: ContributionItem) {
   }
 }
 
-async function onDelete(contribution: ContributionItem) {
+async function onDelete(contribution: Pick<ContributionItem, 'id' | 'memberName' | 'amountCents'>) {
   const confirmed = await confirm({
-    title: 'Eliminar aporte',
-    description: `Se eliminará el aporte de ${contribution.memberName} (${formatEuros(contribution.amountCents)}). El movimiento bancario vinculado no se toca: si queda sin origen, aparecerá en las alertas del resumen.`,
-    confirmLabel: 'Eliminar',
+    title: 'Mover aporte a la papelera',
+    description: `El aporte de ${contribution.memberName} (${formatEuros(contribution.amountCents)}) dejará de contar en el saldo y el grid. Si es una transferencia con su ingreso, el Admin mueve también el ingreso. Podrás restaurarlo desde la papelera.`,
+    confirmLabel: 'Mover a la papelera',
     color: 'error'
   })
   if (!confirmed) return
 
   try {
     await $fetch(`/api/bank/contributions/${contribution.id}`, { method: 'DELETE' })
-    toast.add({ title: 'Aporte eliminado', color: 'success' })
-    await Promise.all([refreshAll(), refreshQuotaGrid()])
+    toast.add({ title: 'Aporte movido a la papelera', color: 'success' })
+    await refreshAll()
   } catch {
-    toast.add({ title: 'No se pudo eliminar el aporte', color: 'error' })
+    toast.add({ title: 'No se pudo mover el aporte a la papelera', color: 'error' })
   }
 }
 
@@ -178,6 +203,12 @@ const activeTab = ref<'quota' | 'pre_purchase' | 'extraordinary'>('quota')
       vincularlo al ingreso bancario real.
     </p>
 
+    <BankDuplicateContributionsCard
+      v-if="isAdmin"
+      :groups="duplicatesData?.groups ?? []"
+      @delete="onDelete"
+    />
+
     <template v-if="!isGuest">
       <UTabs
         v-model="activeTab"
@@ -197,6 +228,7 @@ const activeTab = ref<'quota' | 'pre_purchase' | 'extraordinary'>('quota')
           :current-user-id="currentUserId"
           @link="onLink"
           @unlink="onUnlink"
+          @edit="onEdit"
           @delete="onDelete"
         />
       </template>
@@ -208,6 +240,7 @@ const activeTab = ref<'quota' | 'pre_purchase' | 'extraordinary'>('quota')
           :current-user-id="currentUserId"
           @link="onLink"
           @unlink="onUnlink"
+          @edit="onEdit"
           @delete="onDelete"
         />
       </template>
@@ -219,6 +252,7 @@ const activeTab = ref<'quota' | 'pre_purchase' | 'extraordinary'>('quota')
           :current-user-id="currentUserId"
           @link="onLink"
           @unlink="onUnlink"
+          @edit="onEdit"
           @delete="onDelete"
         />
       </template>
@@ -246,6 +280,12 @@ const activeTab = ref<'quota' | 'pre_purchase' | 'extraordinary'>('quota')
       :initial-period="formPreset.period"
       :initial-type="formPreset.type"
       @created="refreshAll"
+    />
+
+    <BankContributionEditDialog
+      v-model:open="editOpen"
+      :contribution="editTarget"
+      @saved="refreshAll"
     />
 
     <BankLinkDepositDialog

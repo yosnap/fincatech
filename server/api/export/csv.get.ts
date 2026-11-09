@@ -17,11 +17,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Rango de fechas inválido' })
   }
 
-  const startDate = new Date(parsed.data.start)
-  const endDate = new Date(parsed.data.end)
-  endDate.setUTCHours(23, 59, 59, 999)
-
-  const rows = await getExportRows(startDate, endDate, actor)
+  const rows = await getExportRows(parsed.data.start, parsed.data.end, actor)
   const csv = rowsToCsv(rows)
 
   setHeader(event, 'Content-Type', 'text/csv; charset=utf-8')

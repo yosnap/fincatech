@@ -24,6 +24,9 @@ export async function executeApprovedProposalCore(tx: TxExecutor, input: Execute
     throw createError({ statusCode: 400, statusMessage: 'La propuesta no está aprobada con una opción ganadora' })
   }
 
+  // Guard idempotente: lee SIN filtro de papelera a propósito (RT8-9). Si la derrama está en
+  // la papelera, sigue contando como «ya generada»: volver a ejecutar la propuesta no debe
+  // crear una segunda derrama ni resucitar la que el Admin descartó.
   const existingExpense = await tx.query.expenses.findFirst({ where: eq(expenses.originProposalId, proposal.id) })
   if (existingExpense) {
     const existingTask = await tx.query.tasks.findFirst({ where: eq(tasks.originProposalId, proposal.id) })

@@ -52,6 +52,8 @@ const date = ref(new Date().toISOString().slice(0, 10))
 const notes = ref('')
 const proofFile = ref<File | null>(null)
 const submitting = ref(false)
+// Aporte idéntico ya registrado (409 possible_duplicate): se pide confirmación explícita.
+const duplicateOf = ref<{ date: string, amountCents: number, notes: string | null } | null>(null)
 const toast = useToast()
 
 watch(open, (isOpen) => {
@@ -64,6 +66,7 @@ watch(open, (isOpen) => {
   date.value = new Date().toISOString().slice(0, 10)
   notes.value = ''
   proofFile.value = null
+  duplicateOf.value = null
   amount.value = props.quotaAmountCents != null && type.value === 'quota'
     ? String(props.quotaAmountCents / 100)
     : ''
@@ -76,7 +79,18 @@ watch(type, (newType) => {
   }
 })
 
-async function onSubmit() {
+// Si cambian los datos que definen un duplicado, el aviso anterior deja de aplicar.
+watch([memberId, amount, type, date], () => {
+  duplicateOf.value = null
+})
+
+function closeForm() {
+  open.value = false
+}
+
+async function onSubmit(force = false) {
+  // Guard explícito contra doble envío (Enter repetido o doble clic antes del re-render).
+  if (submitting.value) return
   const amountCents = Math.round(Number(amount.value) * 100)
   if (!Number.isFinite(amountCents) || amountCents <= 0) {
     toast.add({ title: 'Importe inválido', color: 'warning' })
@@ -101,8 +115,10 @@ async function onSubmit() {
     formData.append('date', date.value)
     if (notes.value.trim()) formData.append('notes', notes.value)
     if (proofFile.value) formData.append('proof', proofFile.value)
+    if (force) formData.append('force', 'true')
 
     await $fetch('/api/bank/contributions', { method: 'POST', body: formData })
+    duplicateOf.value = null
     open.value = false
     emit('created')
     toast.add({
@@ -112,7 +128,12 @@ async function onSubmit() {
       color: 'success'
     })
   } catch (error) {
-    const statusMessage = (error as { data?: { statusMessage?: string } })?.data?.statusMessage
+    const data = (error as { data?: { statusMessage?: string, data?: { code?: string, existing?: { date: string, amountCents: number, notes: string | null } } } })?.data
+    if (data?.data?.code === 'possible_duplicate' && data.data.existing) {
+      duplicateOf.value = data.data.existing
+      return
+    }
+    const statusMessage = data?.statusMessage
     toast.add({ title: statusMessage ?? 'No se pudo registrar el aporte', color: 'error' })
   } finally {
     submitting.value = false
@@ -129,7 +150,7 @@ async function onSubmit() {
     <template #content>
       <form
         class="flex flex-col gap-4 p-6"
-        @submit.prevent="onSubmit"
+        @submit.prevent="onSubmit()"
       >
         <UFormField
           v-if="isAdmin"
@@ -226,6 +247,19 @@ async function onSubmit() {
           El aporte en efectivo no lleva justificante: lo trae su depósito al vincularlo al
           ingreso bancario.
         </p>
+
+        <UAlert
+          v-if="duplicateOf"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-copy"
+          title="Posible aporte duplicado"
+          :description="`Ya hay un aporte idéntico de ${(duplicateOf.amountCents / 100).toFixed(2)} € con fecha ${duplicateOf.date}${duplicateOf.notes ? ` (${duplicateOf.notes})` : ''}. ¿Seguro que es un aporte distinto?`"
+          :actions="[
+            { label: 'Registrar igualmente', color: 'warning', variant: 'solid', onClick: () => onSubmit(true) },
+            { label: 'No registrar', color: 'neutral', variant: 'outline', onClick: closeForm }
+          ]"
+        />
 
         <div class="mt-2 flex justify-end gap-2">
           <UButton

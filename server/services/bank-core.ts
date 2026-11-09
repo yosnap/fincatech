@@ -264,3 +264,61 @@ export function buildQuotaGrid(
 export function currentPeriodNow(now: Date = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
+
+// ---- Detección de posibles duplicados de aportes ----
+
+export interface DuplicateCandidate {
+  id: string
+  memberId: string
+  amountCents: number
+  type: string
+  period: string | null
+  date: string
+}
+
+// Clave de "posible duplicado": mismo miembro, importe, tipo, fecha y período. Las cuotas ya
+// están protegidas por el índice único miembro+mes; el riesgo real está en pre_purchase y
+// extraordinary (sin restricción en DB), que es donde se aplica el aviso al registrar.
+export function duplicateKey(c: Omit<DuplicateCandidate, 'id'>): string {
+  return [c.memberId, c.amountCents, c.type, c.date, c.period ?? ''].join('|')
+}
+
+export function isDuplicateCheckedType(type: string): boolean {
+  return type === 'pre_purchase' || type === 'extraordinary'
+}
+
+// Agrupa los aportes con la misma clave: solo devuelve grupos de 2 o más, preservando el
+// orden de entrada dentro de cada grupo (el llamador ordena por createdAt).
+export function groupPossibleDuplicates<T extends DuplicateCandidate>(items: T[]): T[][] {
+  const groups = new Map<string, T[]>()
+  for (const item of items) {
+    const key = duplicateKey(item)
+    const group = groups.get(key)
+    if (group) group.push(item)
+    else groups.set(key, [item])
+  }
+  return [...groups.values()].filter(group => group.length > 1)
+}
+
+// ---- Edición de aportes vinculados ----
+
+export interface LinkedSyncInput {
+  contributionId: string
+  // 'cash' | 'transfer' — solo una transferencia crea un ingreso propio.
+  method: string
+  // Cuántos aportes comparten el movimiento (un adelanto multi-mes comparte uno).
+  linkedCount: number
+  // Marca explícita guardada en bank_transactions.auto_created_for_contribution_id al crear
+  // el aporte (fase 8). Antes se deducía comparando importe y descripción; guardar el hecho
+  // es más barato y sobrevive a renombrar un miembro o editar la descripción.
+  autoCreatedForContributionId: string | null
+}
+
+// ¿El movimiento vinculado es el ingreso auto-creado de ESTE aporte por transferencia? Solo
+// entonces se sincroniza al editar el aporte (importe, fecha, descripción) o se arrastra con
+// él a la papelera. Un movimiento compartido (adelanto) o vinculado a mano refleja dinero
+// real del banco y no se toca.
+export function isOwnAutoTransferDeposit(input: LinkedSyncInput): boolean {
+  const { contributionId, method, linkedCount, autoCreatedForContributionId } = input
+  return method === 'transfer' && linkedCount === 1 && autoCreatedForContributionId === contributionId
+}

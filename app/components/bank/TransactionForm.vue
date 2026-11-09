@@ -85,7 +85,7 @@ async function onSubmit() {
   submitting.value = true
   try {
     if (editing.value && props.transaction) {
-      await $fetch(`/api/bank/transactions/${props.transaction.id}`, {
+      const result = await $fetch<{ mortgagePeriodCleared: string | null }>(`/api/bank/transactions/${props.transaction.id}`, {
         method: 'PATCH',
         body: {
           date: date.value,
@@ -98,6 +98,14 @@ async function onSubmit() {
       open.value = false
       emit('saved')
       toast.add({ title: 'Movimiento actualizado', color: 'success' })
+      // RT-10: editar un cargo automático de la hipoteca lo convierte en manual y el cron ya
+      // no lo tocará; el admin tiene que saberlo.
+      if (result.mortgagePeriodCleared) {
+        toast.add({
+          title: `Este movimiento era el cargo automático de la hipoteca de ${result.mortgagePeriodCleared}: ahora es un movimiento manual`,
+          color: 'warning'
+        })
+      }
     } else {
       const formData = new FormData()
       formData.append('date', date.value)

@@ -12,6 +12,8 @@ interface TransactionItem {
   category: string | null
   hasProof: boolean
   balanceCentsAfter: number
+  // Mes del cargo automático de la hipoteca (fase 7); null en movimientos manuales.
+  mortgagePeriod?: string | null
 }
 
 defineProps<{
@@ -105,6 +107,16 @@ async function openProof(transactionId: string) {
               >
                 {{ CATEGORY_LABELS[transaction.category] ?? transaction.category }}
               </UBadge>
+              <UBadge
+                v-if="transaction.mortgagePeriod"
+                color="primary"
+                variant="subtle"
+                size="sm"
+                class="mt-0.5"
+                title="Cargo automático de la hipoteca: editarlo lo convierte en manual"
+              >
+                Automático
+              </UBadge>
             </td>
 
             <td
@@ -170,8 +182,8 @@ async function openProof(transactionId: string) {
                 color="neutral"
                 variant="ghost"
                 size="sm"
-                aria-label="Eliminar movimiento"
-                title="Eliminar movimiento"
+                aria-label="Mover a la papelera"
+                title="Mover a la papelera"
                 @click="emit('delete', transaction)"
               />
             </td>

@@ -113,6 +113,55 @@
       "when": 1789346427598,
       "tag": "0015_fine_iron_fist",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1794163339989,
+      "tag": "0016_young_master_mold",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794164022456,
+      "tag": "0017_melodic_star_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794164231923,
+      "tag": "0018_omniscient_malice",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794165346398,
+      "tag": "0019_small_red_ghost",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794194493510,
+      "tag": "0020_special_bloodstorm",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794195055779,
+      "tag": "0021_zippy_anita_blake",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1794214253549,
+      "tag": "0022_tearful_longshot",
+      "breakpoints": true
     }
   ]
 }

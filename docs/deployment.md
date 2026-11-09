@@ -86,7 +86,29 @@ SMTP_FROM="Finca La Unión <cuenta@gmail.com>"
 NAN_BUILDERS_API_KEY=       # sin esto, el ticket OCR se degrada a entrada manual
 TELEGRAM_BOT_TOKEN=         # sin esto, el bot de Telegram queda desactivado
 TELEGRAM_WEBHOOK_SECRET=
+AI_AGENT_BASE_URL=          # API compatible con OpenAI (por defecto https://api.nan.builders/v1; OpenRouter: https://openrouter.ai/api/v1)
+AI_AGENT_API_KEY=           # si falta, se usa NAN_BUILDERS_API_KEY
+AI_AGENT_MODEL=             # sin esto, el asistente del bot responde que no está configurado (las fotos siguen funcionando)
 ```
+
+El modelo de `AI_AGENT_MODEL` tiene que soportar *function calling* de forma fiable
+(devolver `tool_calls` con JSON válido y nombres de herramienta existentes). Antes de
+activarlo en producción, pruébalo con dos o tres preguntas reales («¿cuánto hay en el
+banco?», «cambia la fecha del aporte X al 5/10») y comprueba en los logs
+(`[telegram-agent] uso de tokens`) que responde con herramientas y no con texto inventado.
+Si el modelo de Nan Builders no lo hace bien, usa uno de OpenRouter con soporte de
+herramientas.
+
+Estas variables son solo el valor por defecto: un Admin puede cambiar proveedor, clave,
+modelo y activación desde **Cuenta → Asistente IA** (`/admin/asistente`), que además tiene un
+botón «Probar» que comprueba el *function calling* con las herramientas reales sin ejecutar
+nada. Lo guardado en la web manda sobre el entorno. La clave guardada se cifra con
+AES-256-GCM usando una clave derivada de `BETTER_AUTH_SECRET`: si se rota ese secreto, la
+clave guardada deja de poder leerse y hay que volver a introducirla. La clave del entorno solo
+se usa con `AI_AGENT_BASE_URL` del entorno, y cambiar la URL desde la web borra la clave
+guardada, para que una clave nunca se envíe a otro proveedor. Si en la web eliges los mismos
+valores que el entorno, no se fijan: siguen al entorno si cambia después. «Restablecer valores
+del servidor» borra todo lo guardado (clave incluida) y vuelve a las variables.
 
 Recomendado igualmente configurar SMTP real cuanto antes: sin él, invitar a nuevos
 propietarios exige compartir el enlace de invitación a mano cada vez.
@@ -99,7 +121,7 @@ openssl rand -base64 32
 `server/plugins/env-check.ts` valida TODAS las variables obligatorias al arrancar el
 contenedor y falla rápido con un mensaje claro si falta alguna — si el contenedor no
 arranca, revisa los logs del servicio en Easypanel primero. Las variables opcionales
-(`NAN_BUILDERS_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`) admiten estar
+(`NAN_BUILDERS_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `AI_AGENT_*`) admiten estar
 completamente ausentes O en blanco: Easypanel (y otros PaaS) suelen inyectar un campo
 vacío del formulario como `""` en vez de omitirlo del entorno, y `server/utils/env.ts`
 trata ambos casos igual a propósito.

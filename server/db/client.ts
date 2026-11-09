@@ -3,7 +3,9 @@ import { Pool } from 'pg'
 import { getEnv } from '../utils/env'
 import * as schema from './schema'
 
-const pool = new Pool({ connectionString: getEnv().DATABASE_URL })
+// Exportado para que los tests de integración puedan cerrarlo y que vitest no quede colgado
+// esperando conexiones inactivas del pool.
+export const pool = new Pool({ connectionString: getEnv().DATABASE_URL })
 
 export const db = drizzle(pool, { schema })
 

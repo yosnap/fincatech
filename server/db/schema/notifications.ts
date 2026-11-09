@@ -4,6 +4,10 @@ import { users } from './users'
 export const telegramLinks = pgTable('telegram_links', {
   userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
   chatId: text('chat_id').notNull().unique(),
+  // `from.id` de Telegram al vincular: mensajes y pulsaciones de botones solo se aceptan si
+  // vienen de esta misma cuenta. Nulo en vínculos antiguos (hay que volver a vincular).
+  telegramUserId: text('telegram_user_id'),
+  telegramUsername: text('telegram_username'),
   linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow()
 })
 
@@ -11,6 +15,7 @@ export const telegramLinks = pgTable('telegram_links', {
 export const telegramLinkTokens = pgTable('telegram_link_tokens', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  // SHA-256 (hex) del token: el valor en claro solo lo ve el usuario en la web.
   token: text('token').notNull().unique(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   usedAt: timestamp('used_at', { withTimezone: true }),

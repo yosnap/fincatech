@@ -7,6 +7,8 @@ export interface DebtSummaryItem {
   status: string
   counterpartyId: string
   counterpartyName: string
+  // Fecha del gasto ('YYYY-MM-DD'): ordena y fecha la línea (no la fecha de alta).
+  expenseDate: string
   createdAt: string
   confirmedAt: string | null
 }
@@ -54,9 +56,9 @@ function compareLines(a: DebtSummaryItem, b: DebtSummaryItem): number {
     case 'amount-asc':
       return a.amountCents - b.amountCents
     case 'date-desc':
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      return b.expenseDate.localeCompare(a.expenseDate) || b.createdAt.localeCompare(a.createdAt)
     case 'date-asc':
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      return a.expenseDate.localeCompare(b.expenseDate) || a.createdAt.localeCompare(b.createdAt)
   }
 }
 
@@ -89,9 +91,9 @@ const groups = computed<DebtGroup[]>(() => {
   return list.sort((a, b) => {
     if (sortBy.value === 'amount-asc') return a.totalCents - b.totalCents
     if (sortBy.value === 'amount-desc') return b.totalCents - a.totalCents
-    const timeOf = (g: DebtGroup) => g.lines.map(l => new Date(l.createdAt).getTime())
-    if (sortBy.value === 'date-asc') return Math.min(...timeOf(a)) - Math.min(...timeOf(b))
-    return Math.max(...timeOf(b)) - Math.max(...timeOf(a))
+    const datesOf = (g: DebtGroup) => g.lines.map(l => l.expenseDate)
+    if (sortBy.value === 'date-asc') return datesOf(a).sort()[0]!.localeCompare(datesOf(b).sort()[0]!)
+    return datesOf(b).sort().at(-1)!.localeCompare(datesOf(a).sort().at(-1)!)
   })
 })
 

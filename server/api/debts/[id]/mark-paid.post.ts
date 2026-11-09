@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { db } from '../../../db/client'
-import { debts } from '../../../db/schema'
+import { debts, expenses } from '../../../db/schema'
 import { markDebtPaid } from '../../../services/expense-service'
 import { uploadFile } from '../../../services/storage'
 import { matchesDeclaredType } from '../../../utils/file-signature'
@@ -26,6 +26,14 @@ export default defineEventHandler(async (event) => {
   }
   if (debt.debtorId !== actor.id) {
     throw createError({ statusCode: 403, statusMessage: 'Solo el deudor puede marcar esta cuota como pagada' })
+  }
+
+  // Comprobación temprana para no subir el comprobante a MinIO y borrarlo después; el
+  // servicio (markDebtPaid) vuelve a comprobarlo bloqueando el gasto (RT8-5).
+  const [expense] = await db.select({ deletedAt: expenses.deletedAt })
+    .from(expenses).where(eq(expenses.id, debt.expenseId))
+  if (expense?.deletedAt) {
+    throw createError({ statusCode: 409, statusMessage: 'El gasto está en la papelera: no se puede marcar la cuota como pagada' })
   }
 
   const formData = await readMultipartFormData(event).catch(() => null)

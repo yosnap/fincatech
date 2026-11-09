@@ -20,9 +20,26 @@ export const bankTransactions = pgTable('bank_transactions', {
   // Desnormalizado para listados baratos; la fila real vive en payment_proofs (polimórfica).
   hasProof: boolean('has_proof').notNull().default(false),
   registeredBy: text('registered_by').notNull().references(() => users.id),
+  // Ingreso auto-creado por un aporte por transferencia (decisión RT8-3). Solo lo rellena
+  // createContribution: permite saber sin heurísticas si el movimiento y el aporte son la
+  // misma operación y, por tanto, si deben moverse juntos a la papelera.
+  autoCreatedForContributionId: uuid('auto_created_for_contribution_id'),
+  // Mes ('YYYY-MM') del cargo automático de la hipoteca (fase 7). Null en cualquier otro
+  // movimiento; editarlo a mano lo convierte en manual (`mortgagePeriod` vuelve a null) para
+  // que el relleno no lo vuelva a tocar.
+  mortgagePeriod: text('mortgage_period'),
+  // Borrado lógico (papelera, fase 8): la fila se conserva con su justificante y todas las
+  // lecturas la excluyen con notDeleted(). Borrado definitivo solo desde /admin/trash.
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  deletedBy: text('deleted_by').references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 }, table => [
-  index('bank_transactions_date_idx').on(table.date)
+  index('bank_transactions_date_idx').on(table.date),
+  index('bank_transactions_auto_contribution_idx').on(table.autoCreatedForContributionId),
+  // Un único cargo automático por mes, ignorando la papelera: borrar un mes y volver a
+  // rellenar debe poder recrearlo (fase 7 + fase 8, RT8-10).
+  uniqueIndex('bank_transactions_mortgage_period_unique').on(table.mortgagePeriod)
+    .where(sql`${table.mortgagePeriod} is not null and ${table.deletedAt} is null`)
 ])
 
 // Aportaciones de los miembros a la copropiedad: aportes pre-compra (histórico), cuota
@@ -47,13 +64,17 @@ export const contributions = pgTable('contributions', {
   // Quién lo registró: el propio miembro (opción A) o el admin por otro (opción B).
   registeredBy: text('registered_by').notNull().references(() => users.id),
   notes: text('notes'),
+  // Borrado lógico (papelera, fase 8): mismas reglas que bank_transactions.
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  deletedBy: text('deleted_by').references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, table => [
   // Una sola cuota por miembro y mes. El adelanto multi-mes crea N filas (una por mes);
   // pre_purchase/extraordinary (period null) no colisionan porque PostgreSQL trata los
-  // NULL como distintos en índices únicos.
-  uniqueIndex('contributions_quota_unique').on(table.memberId, table.period).where(sql`${table.type} = 'quota'`),
+  // NULL como distintos en índices únicos. El filtro `deleted_at is null` permite volver a
+  // registrar el mes después de mandar la cuota a la papelera (fase 8).
+  uniqueIndex('contributions_quota_unique').on(table.memberId, table.period).where(sql`${table.type} = 'quota' and ${table.deletedAt} is null`),
   index('contributions_member_idx').on(table.memberId),
   index('contributions_period_idx').on(table.period)
 ])
@@ -67,5 +88,8 @@ export const financeSettings = pgTable('finance_settings', {
   quotaAmountCents: integer('quota_amount_cents'),
   // 'YYYY-MM' del primer mes con cuota obligatoria.
   quotaStartMonth: text('quota_start_month'),
+  // Marca de agua de la hipoteca: el cron solo genera meses posteriores. Evita recrear un
+  // cargo que el admin borró a mano (fase 7).
+  mortgageGeneratedThrough: text('mortgage_generated_through'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 })

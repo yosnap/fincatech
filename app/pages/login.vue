@@ -5,6 +5,7 @@ import { authClient } from '~/utils/auth-client'
 // otra vez el formulario (middleware guest, espejo del middleware auth).
 definePageMeta({ middleware: ['guest'] })
 
+const route = useRoute()
 const toast = useToast()
 const email = ref('')
 const password = ref('')
@@ -31,6 +32,16 @@ async function onSubmit() {
     return
   }
   toast.add({ title: 'Sesión iniciada', color: 'success' })
+  // Retorno al flujo de autorización OAuth del MCP (fase 4): el redirect del authorize
+  // lleva el query original en la URL de /login — al tener sesión se re-entra en
+  // /api/auth/mcp/authorize y el plugin continúa (consent, o código si ya había consentido).
+  const authorizeQuery = Object.entries(route.query)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join('&')
+  if (route.query.client_id) {
+    window.location.assign(`/api/auth/mcp/authorize?${authorizeQuery}`)
+    return
+  }
   await navigateTo('/')
 }
 </script>

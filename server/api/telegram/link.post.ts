@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { db } from '../../db/client'
 import { telegramLinkTokens } from '../../db/schema'
 import { requireRole } from '../../utils/rbac'
+import { hashLinkToken } from '../../utils/telegram-link-token'
 
 const TOKEN_TTL_MS = 15 * 60 * 1000
 
@@ -11,7 +12,7 @@ export default defineEventHandler(async (event) => {
 
   const token = randomBytes(16).toString('hex')
   const expiresAt = new Date(Date.now() + TOKEN_TTL_MS)
-  await db.insert(telegramLinkTokens).values({ userId: actor.id, token, expiresAt })
+  await db.insert(telegramLinkTokens).values({ userId: actor.id, token: hashLinkToken(token), expiresAt })
 
   return { token, expiresAt }
 })

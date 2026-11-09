@@ -12,6 +12,7 @@ interface TransactionItem {
   category: string | null
   hasProof: boolean
   balanceCentsAfter: number
+  mortgagePeriod?: string | null
 }
 
 interface CashPendingItem {
@@ -63,6 +64,7 @@ const editTarget = ref<TransactionItem | null>(null)
 const proofTarget = ref<TransactionItem | null>(null)
 const proofOpen = ref(false)
 const settingsOpen = ref(false)
+const mortgageOpen = ref(false)
 const confirm = useConfirmDialog()
 const toast = useToast()
 
@@ -88,19 +90,19 @@ function onAttachProof(transactionId: string) {
 
 async function onDelete(transaction: TransactionItem) {
   const confirmed = await confirm({
-    title: 'Eliminar movimiento',
-    description: `Se eliminará "${transaction.description}" (${formatEuros(transaction.amountCents)}). Los aportes vinculados quedarán pendientes de depósito.`,
-    confirmLabel: 'Eliminar',
+    title: 'Mover a la papelera',
+    description: `"${transaction.description}" (${formatEuros(transaction.amountCents)}) dejará de contar en el saldo. Podrás restaurarlo desde la papelera y su justificante se conserva.`,
+    confirmLabel: 'Mover a la papelera',
     color: 'error'
   })
   if (!confirmed) return
 
   try {
     await $fetch(`/api/bank/transactions/${transaction.id}`, { method: 'DELETE' })
-    toast.add({ title: 'Movimiento eliminado', color: 'success' })
+    toast.add({ title: 'Movimiento movido a la papelera', color: 'success' })
     await refreshAll()
   } catch {
-    toast.add({ title: 'No se pudo eliminar el movimiento', color: 'error' })
+    toast.add({ title: 'No se pudo mover el movimiento a la papelera', color: 'error' })
   }
 }
 
@@ -169,15 +171,26 @@ watch([periodFilter, monthFilter, sortBy, () => txData.value?.transactions.lengt
       <h1 class="text-xl font-semibold">
         Cuenta bancaria
       </h1>
-      <UButton
-        v-if="isAdmin"
-        icon="i-lucide-settings-2"
-        color="neutral"
-        variant="soft"
-        @click="settingsOpen = true"
-      >
-        Configuración
-      </UButton>
+      <div class="flex items-center gap-2">
+        <UButton
+          v-if="isAdmin"
+          icon="i-lucide-landmark"
+          color="neutral"
+          variant="soft"
+          @click="mortgageOpen = true"
+        >
+          Hipoteca
+        </UButton>
+        <UButton
+          v-if="isAdmin"
+          icon="i-lucide-settings-2"
+          color="neutral"
+          variant="soft"
+          @click="settingsOpen = true"
+        >
+          Configuración
+        </UButton>
+      </div>
     </div>
 
     <BankReconciliationSummary
@@ -257,6 +270,11 @@ watch([periodFilter, monthFilter, sortBy, () => txData.value?.transactions.lengt
       v-model:open="settingsOpen"
       :settings="settings ?? null"
       @saved="refreshAll"
+    />
+
+    <BankMortgageSettings
+      v-model:open="mortgageOpen"
+      @changed="refreshAll"
     />
   </div>
 </template>

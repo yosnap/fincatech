@@ -1,32 +1,28 @@
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { isValidCalendarDate } from '../../../services/bank-core'
 import { createContribution } from '../../../services/contribution-service'
 import { deleteFile, uploadFile } from '../../../services/storage'
 import { matchesDeclaredType } from '../../../utils/file-signature'
 import { requireRole } from '../../../utils/rbac'
+import { createContributionSchema } from '../../../validation/finance'
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'application/pdf'])
 const MAX_SIZE_BYTES = 10 * 1024 * 1024
 // Tope defensivo muy por encima de cualquier aporte real: integer de Postgres (int4) muere
 // por encima de ~21,4M€ con un 500 feo — mejor un 400 claro.
-const MAX_AMOUNT_CENTS = 100_000_000
-
-const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
-
-const fieldsSchema = z.object({
+// Multipart: los campos llegan como texto. El esquema de negocio es el compartido con el
+// servidor MCP (`server/validation/finance.ts`); `force` es exclusivo de la web (RT-6): el bot
+// y el MCP reciben el 409 de posible duplicado como información, nunca un botón de saltarlo.
+const rawFieldsSchema = z.object({
   memberId: z.string().min(1),
-  amountCents: z.coerce.number().int().positive().max(MAX_AMOUNT_CENTS),
-  type: z.enum(['pre_purchase', 'quota', 'extraordinary']),
-  period: z.string().regex(PERIOD_PATTERN).optional(),
-  method: z.enum(['cash', 'transfer']),
-  date: z.string().refine(isValidCalendarDate, 'Fecha de calendario inválida'),
-  // Solo cuota: adelanto multi-mes (1-24 filas consecutivas en una transacción).
-  months: z.coerce.number().int().min(1).max(24).optional(),
-  notes: z.string().optional()
-}).refine(body => body.type === 'quota' || body.period === undefined, {
-  message: 'Solo las cuotas mensuales llevan período',
-  path: ['period']
+  amountCents: z.coerce.number(),
+  type: z.string(),
+  period: z.string().optional(),
+  method: z.string(),
+  date: z.string(),
+  months: z.coerce.number().optional(),
+  notes: z.string().optional(),
+  force: z.enum(['true', 'false']).optional()
 })
 
 // Registro de aporte: opción A (cada miembro registra la suya) u opción B (el Admin
@@ -44,11 +40,19 @@ export default defineEventHandler(async (event) => {
   for (const part of formData ?? []) {
     if (part.name && part.name !== 'proof') rawFields[part.name] = Buffer.from(part.data).toString('utf8')
   }
-  const parsed = fieldsSchema.safeParse(rawFields)
+  const raw = rawFieldsSchema.safeParse(rawFields)
+  if (!raw.success) {
+    throw createError({ statusCode: 400, statusMessage: 'Datos inválidos', data: raw.error.flatten() })
+  }
+  const parsed = createContributionSchema.safeParse({
+    ...raw.data,
+    period: raw.data.period ?? null
+  })
   if (!parsed.success) {
     throw createError({ statusCode: 400, statusMessage: 'Datos inválidos', data: parsed.error.flatten() })
   }
   const body = parsed.data
+  const force = raw.data.force === 'true'
 
   const file = formData?.find(part => part.name === 'proof')
   if (file && body.method !== 'transfer') {
@@ -89,7 +93,8 @@ export default defineEventHandler(async (event) => {
       date: body.date,
       months: body.months,
       notes: body.notes ?? null,
-      proof
+      proof,
+      force
     })
     return result
   } catch (error) {

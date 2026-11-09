@@ -20,6 +20,8 @@ interface ExpenseItem {
   status: string
   createdBy?: string
   createdByName: string
+  // Fecha del gasto ('YYYY-MM-DD'); `createdAt` es la de alta y solo desempata.
+  expenseDate: string
   createdAt: string
   participantCount: number
   debts?: DebtSummary[]
@@ -63,7 +65,7 @@ const MONTH_OPTIONS = [
 ]
 const YEAR_OPTIONS = computed(() => {
   const years = [...new Set((data.value?.expenses ?? [])
-    .map(e => new Date(e.createdAt).getUTCFullYear()))].sort((a, b) => b - a)
+    .map(e => Number(e.expenseDate.slice(0, 4))))].sort((a, b) => b - a)
   return [{ label: 'Todos los años', value: 'all' }, ...years.map(y => ({ label: String(y), value: y }))]
 })
 // Clave de persona: id cuando el rol lo ve; para el Invitado (que no recibe createdBy)
@@ -95,9 +97,11 @@ const SORT_OPTIONS = [
 ]
 
 const filtered = computed(() => (data.value?.expenses ?? []).filter((e) => {
-  const date = new Date(e.createdAt)
-  if (monthFilter.value !== 'all' && date.getUTCMonth() !== monthFilter.value) return false
-  if (yearFilter.value !== 'all' && date.getUTCFullYear() !== yearFilter.value) return false
+  // Mes y año de la FECHA DEL GASTO, leídos del string: sin conversiones de fecha.
+  const monthIndex = Number(e.expenseDate.slice(5, 7)) - 1
+  const year = Number(e.expenseDate.slice(0, 4))
+  if (monthFilter.value !== 'all' && monthIndex !== monthFilter.value) return false
+  if (yearFilter.value !== 'all' && year !== yearFilter.value) return false
   if (userFilter.value !== 'all' && personKey(e) !== userFilter.value) return false
   if (statusFilter.value !== 'all' && e.status !== statusFilter.value) return false
   return true
@@ -107,8 +111,8 @@ const sorted = computed(() => [...filtered.value].sort((a, b) => {
   switch (sortBy.value) {
     case 'amount-desc': return b.amountCents - a.amountCents
     case 'amount-asc': return a.amountCents - b.amountCents
-    case 'date-asc': return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    default: return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    case 'date-asc': return a.expenseDate.localeCompare(b.expenseDate)
+    default: return b.expenseDate.localeCompare(a.expenseDate)
   }
 }))
 
@@ -239,7 +243,7 @@ watch([monthFilter, yearFilter, userFilter, statusFilter, sortBy, viewMode, () =
               {{ expense.description }}
             </p>
             <p class="flex flex-wrap items-center gap-1 text-sm text-muted">
-              {{ new Date(expense.createdAt).toLocaleDateString('es-ES') }} · {{ expense.createdByName }}
+              {{ new Date(`${expense.expenseDate}T00:00:00`).toLocaleDateString('es-ES') }} · {{ expense.createdByName }}
               <span class="ml-1 inline-flex items-center gap-0.5">
                 <UIcon
                   name="i-lucide-users"
@@ -314,7 +318,7 @@ watch([monthFilter, yearFilter, userFilter, statusFilter, sortBy, viewMode, () =
           >
             <p class="min-w-0 truncate">
               {{ expense.description }}
-              <span class="text-muted">· {{ new Date(expense.createdAt).toLocaleDateString('es-ES') }}</span>
+              <span class="text-muted">· {{ new Date(`${expense.expenseDate}T00:00:00`).toLocaleDateString('es-ES') }}</span>
             </p>
             <span class="shrink-0 font-medium">{{ formatEuros(expense.amountCents) }}</span>
           </NuxtLink>

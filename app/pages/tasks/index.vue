@@ -47,18 +47,30 @@ function tasksByStatus(status: string) {
 const title = ref('')
 const description = ref('')
 const assigneeId = ref<string | undefined>(undefined)
+const priority = ref('medium')
+const dueDate = ref('')
 const submitting = ref(false)
 const toast = useToast()
 
+const priorityOptions = Object.entries(PRIORITY_LABELS).map(([value, label]) => ({ label, value }))
 const assigneeOptions = computed(() => (membersData.value?.members ?? []).map(m => ({ label: m.name, value: m.id })))
 
 async function onSubmit() {
   submitting.value = true
   try {
-    await $fetch('/api/tasks', { method: 'POST', body: { title: title.value, description: description.value, assigneeId: assigneeId.value } })
+    await $fetch('/api/tasks', { method: 'POST', body: {
+      title: title.value,
+      description: description.value,
+      assigneeId: assigneeId.value,
+      priority: priority.value,
+      dueDate: dueDate.value || undefined
+    }
+    })
     title.value = ''
     description.value = ''
     assigneeId.value = undefined
+    priority.value = 'medium'
+    dueDate.value = ''
     await refresh()
     toast.add({ title: 'Tarea creada', color: 'success' })
   } catch {
@@ -106,6 +118,22 @@ async function onSubmit() {
             class="w-full"
           />
         </UFormField>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <UFormField label="Prioridad">
+            <USelect
+              v-model="priority"
+              :items="priorityOptions"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField label="Fecha límite (opcional)">
+            <UInput
+              v-model="dueDate"
+              type="date"
+              class="w-full"
+            />
+          </UFormField>
+        </div>
         <UButton
           type="submit"
           :loading="submitting"

@@ -24,6 +24,7 @@ function expense(partial: Partial<SettlementInputExpense>): SettlementInputExpen
     description: 'Recibo',
     createdBy: 'me',
     amountCents: 1000,
+    expenseDate: '2026-01-01',
     ...partial
   }
 }
@@ -71,7 +72,7 @@ describe('computeSettlement', () => {
       debt({ debtorId: 'a', creditorId: 'me', amountCents: 4_000, status: 'pending' })
     ]
 
-    const result = computeSettlement('me', allDebts, [], USERS, true)
+    const result = computeSettlement('me', allDebts, [expense({ amountCents: 4_000 })], USERS, true)
 
     expect(result.counterparties[0]!.iOweThemCents).toBe(0)
     expect(result.counterparties[0]!.theyOweMeCents).toBe(4_000)
@@ -83,7 +84,7 @@ describe('computeSettlement', () => {
       debt({ debtorId: 'me', creditorId: 'a', amountCents: 10_000, status: 'pending_confirmation' })
     ]
 
-    const result = computeSettlement('me', allDebts, [], USERS, true)
+    const result = computeSettlement('me', allDebts, [expense({ amountCents: 10_000 })], USERS, true)
 
     expect(result.counterparties[0]!.iOweThemCents).toBe(10_000)
   })
@@ -98,6 +99,7 @@ describe('computeSettlement', () => {
   it('los recibos subidos por cada persona se agregan como contexto global (totalSpentCents)', () => {
     const allDebts = [debt({ debtorId: 'me', creditorId: 'a', amountCents: 1_000 })]
     const allExpenses = [
+      expense({ id: 'expense-1', createdBy: 'me', amountCents: 1_000 }),
       expense({ id: 'e-1', createdBy: 'a', amountCents: 60_000 }),
       expense({ id: 'e-2', createdBy: 'a', amountCents: 40_000 }),
       expense({ id: 'e-3', createdBy: 'b', amountCents: 25_000 })
@@ -124,12 +126,28 @@ describe('computeSettlement', () => {
       debt({ debtorId: 'a', creditorId: 'me', amountCents: 50_000, createdAt: T1 })
     ]
 
-    const result = computeSettlement('me', allDebts, [], USERS, true)
+    const result = computeSettlement('me', allDebts, [expense({})], USERS, true)
 
     const ana = result.counterparties[0]!
     expect(ana.netCents).toBe(0)
     expect(ana.theyOweMeLines).toHaveLength(1)
     expect(ana.iOweThemLines).toHaveLength(1)
+  })
+
+  it('ordena las líneas por fecha del gasto, no por fecha de alta (RT-12)', () => {
+    const allDebts = [
+      debt({ id: 'd-tarde', expenseId: 'e-tarde', creditorId: 'a', amountCents: 1_000, createdAt: T0 }),
+      debt({ id: 'd-pronto', expenseId: 'e-pronto', creditorId: 'a', amountCents: 2_000, createdAt: T1 })
+    ]
+    // El gasto 'e-tarde' se dio de alta ANTES pero su fecha de gasto es posterior.
+    const allExpenses = [
+      expense({ id: 'e-tarde', description: 'Tarde', amountCents: 1_000, expenseDate: '2026-09-20' }),
+      expense({ id: 'e-pronto', description: 'Pronto', amountCents: 2_000, expenseDate: '2026-09-01' })
+    ]
+
+    const result = computeSettlement('me', allDebts, allExpenses, USERS, true)
+
+    expect(result.counterparties[0]!.iOweThemLines.map(l => l.description)).toEqual(['Pronto', 'Tarde'])
   })
 
   it('ordena contrapartes por |diferencia| descendente y agrupa varias recibos por persona', () => {
@@ -154,6 +172,23 @@ describe('computeSettlement', () => {
     const ana = result.counterparties[1]!
     expect(ana.theyOweMeCents).toBe(15_000)
     expect(ana.theyOweMeLines.map(l => l.description)).toEqual(['A dos', 'A uno'])
+  })
+
+  it('descarta las deudas cuyo gasto no está vivo (papelera o gasto borrado) — RT8-1', () => {
+    const allDebts = [
+      // Gasto en la papelera: su deuda ya no participa en la liquidación.
+      debt({ id: 'd-trash', expenseId: 'e-trash', creditorId: 'a', amountCents: 70_000 }),
+      // Gasto vivo: sí participa.
+      debt({ id: 'd-live', expenseId: 'e-live', creditorId: 'b', amountCents: 20_000 })
+    ]
+    const allExpenses = [expense({ id: 'e-live', createdBy: 'b', amountCents: 20_000 })]
+
+    const result = computeSettlement('me', allDebts, allExpenses, USERS, true)
+
+    const byId = new Map(result.counterparties.map(c => [c.userId, c]))
+    expect(byId.get('a')).toBeUndefined()
+    expect(byId.get('b')?.iOweThemCents).toBe(20_000)
+    expect(result.totalIOweThemCents).toBe(20_000)
   })
 
   it('ignora deudas de una persona consigo misma y deudas entre terceros', () => {

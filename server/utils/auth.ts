@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { admin } from 'better-auth/plugins'
+import { admin, mcp } from 'better-auth/plugins'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/client'
@@ -9,6 +9,38 @@ import { getEnv } from './env'
 import { ac, adminRole, guestRole, ownerRole } from './permissions'
 
 const env = getEnv()
+
+// Callbacks OAuth admitidos al registrar un cliente MCP: los conectores de claude.ai /
+// claude.com (también los usa Claude Desktop) y loopback (Claude Code, MCP Inspector). El
+// registro dinámico es anónimo; sin esta lista cualquier web registraría su propio callback.
+const MCP_REDIRECT_ALLOWLIST = [
+  /^https:\/\/claude\.(ai|com)\/api\/mcp\/auth_callback$/,
+  /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/[^\s]*$/
+]
+
+function isAllowedMcpRedirect(uri: unknown): boolean {
+  return typeof uri === 'string' && MCP_REDIRECT_ALLOWLIST.some(pattern => pattern.test(uri))
+}
+
+async function isActiveAdmin(userId: string): Promise<boolean> {
+  const [user] = await db
+    .select({ role: schema.users.role, banned: schema.users.banned, pendingApproval: schema.users.pendingApproval })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+  return Boolean(user && user.role === 'admin' && !user.banned && !user.pendingApproval)
+}
+
+// El plugin `mcp` guarda el código de autorización y el consent_code como verificaciones
+// con un JSON que incluye `clientId` y `userId`. Es el único punto por el que nace un código
+// (authorize, retorno del login o consentimiento), así que el rol se comprueba aquí.
+function oauthCodeUserId(value: string): string | null {
+  try {
+    const parsed = JSON.parse(value) as { clientId?: unknown, userId?: unknown }
+    return typeof parsed.clientId === 'string' && typeof parsed.userId === 'string' ? parsed.userId : null
+  } catch {
+    return null
+  }
+}
 
 export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
@@ -20,7 +52,11 @@ export const auth = betterAuth({
       user: schema.users,
       session: schema.sessions,
       account: schema.accounts,
-      verification: schema.verifications
+      verification: schema.verifications,
+      // Servidor de autorización OAuth 2.1 del servidor MCP (fase 4).
+      oauthApplication: schema.oauthApplication,
+      oauthAccessToken: schema.oauthAccessToken,
+      oauthConsent: schema.oauthConsent
     }
   }),
   emailAndPassword: {
@@ -51,8 +87,34 @@ export const auth = betterAuth({
       adminRoles: ['admin'],
       ac,
       roles: { admin: adminRole, owner: ownerRole, guest: guestRole }
+    }),
+    // Servidor MCP remoto en /mcp (fase 4): el plugin monta el flujo OAuth 2.1 completo bajo
+    // /api/auth (/mcp/authorize, /mcp/token, /mcp/register, jwks, userinfo, consentimiento).
+    // `loginPage` es nuestra pantalla de login (si no hay sesión, redirige ahí conservando la
+    // petición original) y `consentPage` la pantalla de consentimiento propia.
+    mcp({
+      loginPage: '/login',
+      resource: `${env.BETTER_AUTH_URL}/mcp`,
+      oidcConfig: {
+        loginPage: '/login',
+        consentPage: '/oauth/consent'
+      }
     })
   ],
+  databaseHooks: {
+    verification: {
+      create: {
+        before: async (verification) => {
+          const userId = oauthCodeUserId(verification.value)
+          if (userId && !(await isActiveAdmin(userId))) {
+            throw new APIError('FORBIDDEN', {
+              message: 'Solo los administradores pueden autorizar aplicaciones MCP'
+            })
+          }
+        }
+      }
+    }
+  },
   hooks: {
     // Una cuenta pendiente de aprobación (auto-registro) NO puede iniciar sesión: sin rol
     // asignado por el Admin no se entra ni con acceso de solo lectura — ver cualquier dato
@@ -60,6 +122,25 @@ export const auth = betterAuth({
     // aplica a las llamadas server-side (auth.api.signInEmail), por eso self-register ya
     // no auto-inicia sesión tras crear la cuenta.
     before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === '/mcp/register') {
+        const redirectUris = (ctx.body as { redirect_uris?: unknown } | undefined)?.redirect_uris
+        if (!Array.isArray(redirectUris) || redirectUris.length === 0 || !redirectUris.every(isAllowedMcpRedirect)) {
+          throw new APIError('BAD_REQUEST', {
+            error: 'invalid_redirect_uri',
+            message: 'Solo se admiten callbacks de claude.ai / claude.com o de loopback'
+          })
+        }
+      }
+      // Sin `prompt=consent` el plugin emite el código directamente, sin pantalla: una web
+      // ajena podría obtenerlo de un Admin con sesión abierta con solo hacerle navegar.
+      if (ctx.path === '/mcp/authorize' && ctx.query?.prompt !== 'consent') {
+        const url = new URL(ctx.request?.url ?? `${env.BETTER_AUTH_URL}/api/auth/mcp/authorize`)
+        for (const [key, value] of Object.entries(ctx.query ?? {})) {
+          if (typeof value === 'string') url.searchParams.set(key, value)
+        }
+        url.searchParams.set('prompt', 'consent')
+        throw ctx.redirect(url.toString())
+      }
       if (ctx.path === '/sign-in/email') {
         const body = ctx.body as { email?: string }
         if (body.email) {

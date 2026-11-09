@@ -1,27 +1,23 @@
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { isValidCalendarDate } from '../../../services/bank-core'
 import { createTransaction } from '../../../services/bank-service'
 import { deleteFile, uploadFile } from '../../../services/storage'
 import { matchesDeclaredType } from '../../../utils/file-signature'
 import { requireRole } from '../../../utils/rbac'
+import { bankTransactionFieldsSchema } from '../../../validation/finance'
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'application/pdf'])
 const MAX_SIZE_BYTES = 10 * 1024 * 1024
 // Tope defensivo muy por encima de cualquier movimiento real (int4 de Postgres muere por
 // encima de ~21,4M€ con un 500 feo — mejor un 400 claro).
-const MAX_AMOUNT_CENTS = 100_000_000
-
-const fieldsSchema = z.object({
-  date: z.string().refine(isValidCalendarDate, 'Fecha de calendario inválida'),
-  direction: z.enum(['deposit', 'withdrawal']),
-  amountCents: z.coerce.number().int().positive().max(MAX_AMOUNT_CENTS),
+// Los campos llegan como texto del multipart; se convierten antes de validar con el esquema
+// compartido con el servidor MCP (RT-3).
+const rawFieldsSchema = z.object({
+  date: z.string(),
+  direction: z.string(),
+  amountCents: z.coerce.number(),
   description: z.string().min(1),
-  // Solo depósitos: categoría de ingreso externo. Un aporte de miembro no lleva categoría.
-  category: z.enum(['hacienda', 'ayuntamiento', 'impuestos', 'iva', 'otro']).optional()
-}).refine(body => body.direction === 'deposit' || body.category === undefined, {
-  message: 'Las salidas no llevan categoría',
-  path: ['category']
+  category: z.string().optional()
 })
 
 // Alta de movimiento bancario (solo Admin = tesorero, decisión de producto). Multipart con
@@ -35,7 +31,14 @@ export default defineEventHandler(async (event) => {
   for (const part of formData ?? []) {
     if (part.name && part.name !== 'proof') rawFields[part.name] = Buffer.from(part.data).toString('utf8')
   }
-  const parsed = fieldsSchema.safeParse(rawFields)
+  const raw = rawFieldsSchema.safeParse(rawFields)
+  if (!raw.success) {
+    throw createError({ statusCode: 400, statusMessage: 'Datos inválidos', data: raw.error.flatten() })
+  }
+  const parsed = bankTransactionFieldsSchema.safeParse({
+    ...raw.data,
+    category: raw.data.category ?? null
+  })
   if (!parsed.success) {
     throw createError({ statusCode: 400, statusMessage: 'Datos inválidos', data: parsed.error.flatten() })
   }
@@ -74,7 +77,7 @@ export default defineEventHandler(async (event) => {
       direction: body.direction,
       amountCents: body.amountCents,
       description: body.description,
-      category: body.category ?? null,
+      category: body.category,
       proof
     })
     return { transaction }
