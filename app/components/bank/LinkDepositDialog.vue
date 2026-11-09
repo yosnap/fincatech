@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Vincula un aporte en efectivo (pendiente de depósito) a un ingreso bancario existente.
-// Solo se ofrecen depósitos sin categoría externa: un ingreso categorizado (Hacienda,
-// IVA…) es por definición dinero que no viene de un miembro.
+// Solo se ofrecen depósitos sin categoría externa (un ingreso categorizado —Hacienda, IVA…—
+// no viene de un miembro), no anteriores al aporte y con importe libre suficiente: un ingreso
+// ya cubierto por otros aportes no aparece.
 
 interface ContributionItem {
   id: string
@@ -17,6 +18,8 @@ interface TransactionItem {
   amountCents: number
   description: string
   category: string | null
+  // Parte del ingreso ya cubierta por otros aportes.
+  linkedCents?: number
 }
 
 const props = defineProps<{
@@ -36,11 +39,24 @@ const selectedDepositId = ref(NO_DEPOSIT)
 const submitting = ref(false)
 const toast = useToast()
 
-const linkableDeposits = computed(() =>
-  (props.transactions ?? [])
+function freeCents(t: TransactionItem): number {
+  return t.amountCents - (t.linkedCents ?? 0)
+}
+
+const linkableDeposits = computed(() => {
+  const contribution = props.contribution
+  if (!contribution) return []
+  return (props.transactions ?? [])
     .filter(t => t.direction === 'deposit' && t.category === null)
+    .filter(t => t.date >= contribution.date.slice(0, 10))
+    .filter(t => freeCents(t) >= contribution.amountCents)
     .sort((a, b) => b.date.localeCompare(a.date))
-)
+})
+
+function depositLabel(t: TransactionItem): string {
+  const base = `${new Date(t.date).toLocaleDateString('es-ES')} · ${formatEuros(t.amountCents)} · ${t.description}`
+  return t.linkedCents ? `${base} (quedan ${formatEuros(freeCents(t))})` : base
+}
 
 watch(open, (isOpen) => {
   if (isOpen) selectedDepositId.value = NO_DEPOSIT
@@ -90,10 +106,7 @@ async function onLink() {
             v-model="selectedDepositId"
             :items="[
               { label: '— Selecciona un ingreso —', value: NO_DEPOSIT },
-              ...linkableDeposits.map(t => ({
-                label: `${new Date(t.date).toLocaleDateString('es-ES')} · ${formatEuros(t.amountCents)} · ${t.description}`,
-                value: t.id
-              }))
+              ...linkableDeposits.map(t => ({ label: depositLabel(t), value: t.id }))
             ]"
             class="w-full"
           />
@@ -103,8 +116,9 @@ async function onLink() {
           v-if="!linkableDeposits.length"
           class="text-sm text-muted"
         >
-          No hay ingresos bancarios sin categoría a los que vincular. Registra primero el
-          ingreso en Cuenta bancaria.
+          No hay ingresos libres a los que vincular este aporte (sin categoría, de la misma
+          fecha o posterior y con importe suficiente sin cubrir). Registra primero el ingreso en
+          Cuenta bancaria.
         </p>
 
         <div class="mt-2 flex justify-end gap-2">
