@@ -4,9 +4,9 @@ import { describe } from 'vitest'
 // funciones puras; estos tests existen porque el comportamiento de la papelera y de los
 // locks solo se puede demostrar con conexiones de verdad.
 //
-// Se activan con TEST_DATABASE_URL (una BD con las migraciones aplicadas); sin ella el bloque
-// queda 'skipped' y `pnpm test` sigue siendo puro:
-//   TEST_DATABASE_URL=postgres://fincatech:fincatech@localhost:5438/fincatech pnpm test
+// Se activan con TEST_DATABASE_URL, que debe apuntar a una BD SOLO de tests (con las
+// migraciones aplicadas): algunos tests vacían tablas enteras (p. ej. la hipoteca). Sin ella el
+// bloque queda 'skipped' y `pnpm test` sigue siendo puro. Ver docs/deployment.md.
 
 export const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL
 
@@ -18,6 +18,11 @@ export const describeDb = TEST_DATABASE_URL ? describe : describe.skip
 export async function setupIntegrationDb() {
   if (!TEST_DATABASE_URL) {
     throw new Error('setupIntegrationDb() requiere TEST_DATABASE_URL')
+  }
+  // Salvaguarda: nunca contra la BD de desarrollo o producción. El nombre debe acabar en _test.
+  const databaseName = new URL(TEST_DATABASE_URL).pathname.replace(/^\//, '')
+  if (!databaseName.endsWith('_test')) {
+    throw new Error(`TEST_DATABASE_URL debe apuntar a una BD cuyo nombre acabe en _test (es «${databaseName}»)`)
   }
   process.env.DATABASE_URL = TEST_DATABASE_URL
   process.env.MINIO_ENDPOINT ??= 'localhost'
@@ -33,7 +38,7 @@ export async function setupIntegrationDb() {
   return { ...client, schema }
 }
 
-// Sufijo único por ejecución para no chocar con datos reales de la BD de desarrollo.
+// Sufijo único por ejecución para que varias ejecuciones no choquen entre sí.
 export function uniqueSuffix(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }

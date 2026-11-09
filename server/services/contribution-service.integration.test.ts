@@ -9,7 +9,7 @@ import { describeDb, setupIntegrationDb } from '../test/integration-db'
 //
 // Se activa solo con TEST_DATABASE_URL (una BD con las migraciones aplicadas); sin ella el
 // bloque entero queda en 'skipped' y `pnpm test` sigue siendo puro:
-//   TEST_DATABASE_URL=postgres://fincatech:fincatech@localhost:5438/fincatech pnpm test
+//   TEST_DATABASE_URL=postgres://fincatech:fincatech@localhost:5438/fincatech_test pnpm test
 describeDb('createContribution — concurrencia (RT-6)', () => {
   const memberId = `test-member-${randomUUID()}`
   const today = new Date().toISOString().slice(0, 10)
