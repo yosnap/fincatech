@@ -35,6 +35,7 @@ describeDb('createContribution — concurrencia (RT-6)', () => {
   afterAll(async () => {
     if (!service) return
     await client.db.delete(schema.contributions).where(eq(schema.contributions.memberId, memberId))
+    await client.db.delete(schema.bankTransactions).where(eq(schema.bankTransactions.registeredBy, memberId))
     // audit_log es de solo-inserción para la app; aquí solo se limpia el rastro del fixture,
     // que si no bloquea el borrado del usuario por FK.
     await client.db.delete(schema.auditLog).where(eq(schema.auditLog.actorId, memberId))
@@ -131,5 +132,35 @@ describeDb('createContribution — concurrencia (RT-6)', () => {
     ])
 
     expect(results.every(r => r.status === 'fulfilled')).toBe(true)
+  })
+
+  it('un ingreso no se puede vincular por encima de su importe', async () => {
+    const [deposit] = await client.db.insert(schema.bankTransactions).values({
+      date: today,
+      direction: 'deposit',
+      amountCents: 10_000,
+      description: 'Depósito de efectivo (test)',
+      registeredBy: memberId
+    }).returning()
+    const base = {
+      actorId: memberId,
+      actorRole: 'owner',
+      memberId,
+      type: 'extraordinary' as const,
+      period: null,
+      method: 'cash' as const,
+      date: today,
+      force: true
+    }
+    const first = await service.createContribution({ ...base, amountCents: 6_000 })
+    const second = await service.createContribution({ ...base, amountCents: 5_000 })
+    const third = await service.createContribution({ ...base, amountCents: 4_000 })
+
+    await service.linkContribution({ contributionId: first.contributions[0]!.id, actorId: memberId, bankTransactionId: deposit!.id })
+    await expect(service.linkContribution({ contributionId: second.contributions[0]!.id, actorId: memberId, bankTransactionId: deposit!.id }))
+      .rejects.toMatchObject({ statusCode: 400 })
+    // 6.000 + 4.000 = 10.000: cabe justo.
+    await service.linkContribution({ contributionId: third.contributions[0]!.id, actorId: memberId, bankTransactionId: deposit!.id })
+    expect((await service.linkedAmountByTransaction()).get(deposit!.id)).toBe(10_000)
   })
 })

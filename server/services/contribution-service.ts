@@ -262,6 +262,17 @@ export async function createContribution(input: CreateContributionInput) {
   })
 }
 
+// Importe ya cubierto por aportes (no borrados) en cada ingreso: un ingreso puede reunir varios
+// aportes (un depósito de efectivo de varias personas, una transferencia de varias cuotas).
+export async function linkedAmountByTransaction(executor: TxExecutor = db): Promise<Map<string, number>> {
+  const rows = await executor
+    .select({ transactionId: contributions.bankTransactionId, total: sql<number>`coalesce(sum(${contributions.amountCents}), 0)::int` })
+    .from(contributions)
+    .where(and(notDeleted(contributions), sql`${contributions.bankTransactionId} is not null`))
+    .groupBy(contributions.bankTransactionId)
+  return new Map(rows.filter(row => row.transactionId).map(row => [row.transactionId!, Number(row.total)]))
+}
+
 interface LinkContributionInput {
   contributionId: string
   actorId: string
@@ -305,6 +316,12 @@ export async function linkContribution(input: LinkContributionInput) {
     // manos del tesorero antes de llegar al banco.
     if (transaction.date < contribution.date) {
       throw createError({ statusCode: 400, statusMessage: 'El ingreso es anterior a la fecha del aporte' })
+    }
+
+    // El ingreso no puede cubrir más de lo que vale: lo ya vinculado más este aporte.
+    const alreadyLinked = (await linkedAmountByTransaction(tx)).get(transaction.id) ?? 0
+    if (alreadyLinked + contribution.amountCents > transaction.amountCents) {
+      throw createError({ statusCode: 400, statusMessage: 'Ese ingreso ya está cubierto por otros aportes y no le queda importe suficiente' })
     }
 
     const [updated] = await tx.update(contributions)
