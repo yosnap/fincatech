@@ -77,7 +77,7 @@ El admin necesita corregir datos financieros (aportes duplicados, fechas mal pue
 | 2 | [Edición de aportes en la web](./phase-02-edicion-aportes-web.md) | Completed |
 | 3 | [Fecha de gastos](./phase-03-fecha-gastos.md) | Completed |
 | 4 | [Capa de herramientas y servidor MCP](./phase-04-capa-herramientas-y-mcp.md) | In progress (implementado y verificado en local; falta el flujo OAuth en navegador) |
-| 5 | [Agente de Telegram](./phase-05-agente-telegram.md) | Pending |
+| 5 | [Agente de Telegram](./phase-05-agente-telegram.md) | In progress (implementado y verificado en local; falta probar el modelo real y el bot de pruebas) |
 | 6 | [Activación y despliegue](./phase-06-activacion-y-despliegue.md) | Pending |
 | 7 | [Cargo automático de la hipoteca](./phase-07-cargo-automatico-hipoteca.md) | Completed |
 | 8 | [Papelera de movimientos, aportes y gastos](./phase-08-papelera-movimientos-y-aportes.md) | Completed |

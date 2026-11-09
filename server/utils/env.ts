@@ -40,7 +40,14 @@ const envSchema = z.object({
   // Opcionales igual que NAN_BUILDERS_API_KEY: sin ellas, el bot de Telegram (Fase 5) queda
   // desactivado (el webhook rechaza todo) pero el resto de la app arranca normalmente.
   TELEGRAM_BOT_TOKEN: optionalString(),
-  TELEGRAM_WEBHOOK_SECRET: optionalString()
+  TELEGRAM_WEBHOOK_SECRET: optionalString(),
+  // Agente de Telegram: cualquier API compatible con OpenAI con function calling (Nan Builders
+  // por defecto, OpenRouter u otra). Sin AI_AGENT_MODEL el bot responde que el asistente no
+  // está configurado; las fotos de tickets siguen funcionando. Si falta AI_AGENT_API_KEY se usa
+  // NAN_BUILDERS_API_KEY (mismo proveedor que el OCR).
+  AI_AGENT_BASE_URL: z.preprocess(v => (v === '' ? undefined : v), z.string().url().default('https://api.nan.builders/v1')),
+  AI_AGENT_API_KEY: optionalString(),
+  AI_AGENT_MODEL: optionalString()
 })
 
 let cached: z.infer<typeof envSchema> | undefined

@@ -1,7 +1,7 @@
 ---
 phase: 5
 title: "Phase 5: Agente de Telegram"
-status: todo
+status: in-progress
 priority: P1
 effort: 9h
 dependencies: [4]

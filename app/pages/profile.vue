@@ -18,12 +18,28 @@ interface Preferences {
 }
 
 const { data: prefs, refresh: refreshPrefs } = await useFetch<Preferences>('/api/notifications/preferences')
-const { data: telegramStatus, refresh: refreshTelegramStatus } = await useFetch<{ linked: boolean }>('/api/telegram/status')
+const { data: telegramStatus, refresh: refreshTelegramStatus } = await useFetch<{ linked: boolean, username: string | null, needsRelink: boolean }>('/api/telegram/status')
 
 const linkToken = ref('')
 const linkError = ref('')
 const generatingToken = ref(false)
 const savingPrefs = ref(false)
+const unlinking = ref(false)
+const toast = useToast()
+
+async function unlinkTelegram() {
+  unlinking.value = true
+  try {
+    await $fetch('/api/telegram/link', { method: 'DELETE' })
+    linkToken.value = ''
+    await refreshTelegramStatus()
+    toast.add({ title: 'Telegram desvinculado', color: 'success' })
+  } catch {
+    toast.add({ title: 'No se pudo desvincular Telegram', color: 'error' })
+  } finally {
+    unlinking.value = false
+  }
+}
 
 async function generateLinkToken() {
   linkError.value = ''
@@ -130,8 +146,34 @@ async function savePreferences(telegramEnabled: boolean, emailEnabled: boolean) 
           Telegram no está vinculado todavía.
         </p>
 
+        <div
+          v-if="telegramStatus?.linked"
+          class="flex items-center justify-between gap-2"
+        >
+          <p class="text-sm">
+            Vinculado{{ telegramStatus.username ? ` como @${telegramStatus.username}` : '' }}
+          </p>
+          <UButton
+            size="xs"
+            color="neutral"
+            variant="outline"
+            :loading="unlinking"
+            @click="unlinkTelegram"
+          >
+            Desvincular
+          </UButton>
+        </div>
+
+        <UAlert
+          v-if="telegramStatus?.needsRelink"
+          color="warning"
+          variant="soft"
+          title="Vuelve a vincular Telegram"
+          description="El vínculo es anterior a la última actualización de seguridad. Genera un token nuevo y envíalo al bot."
+        />
+
         <UButton
-          v-if="!telegramStatus?.linked"
+          v-if="!telegramStatus?.linked || telegramStatus?.needsRelink"
           variant="soft"
           :loading="generatingToken"
           @click="generateLinkToken"
